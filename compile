@@ -1,0 +1,6 @@
+#!/bin/bash
+./src/env/bin/python3.10 src/main.py input.txt
+lli build/out.ll 
+#gcc build/out.s -o build/a.out
+#./build/a.out
+echo $?

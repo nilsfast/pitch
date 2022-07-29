@@ -1,0 +1,8 @@
+old
+.vscode
+**/__pycache__
+**/env
+*.out
+build/*
+misc
+parsetab.py
