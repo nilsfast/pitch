@@ -7,11 +7,12 @@ class Scope():
     def __init__(self) -> None:
         self.locals = {}
 
-    def register(self, name, typ=tm.IntType(size=32)):
+    def register(self, name, typ=tm.IntType(size=32), dyn_type=False):
         """
         Adds name and a unique suffix to the local register and returns the new name 
         """
         suffix = 1
+        dynamic_type = True if dyn_type else False
         name_with_suffix = name 
 
         if name == 'sym':
@@ -22,18 +23,18 @@ class Scope():
             suffix += 1
         
         if name == 'sym':  
-            self.locals[name_with_suffix] = Var(name_with_suffix, typ)
+            self.locals[name_with_suffix] = Var(name_with_suffix, typ, dynamic_type)
         else:
-            self.locals[name] = Var(name_with_suffix, typ)
+            self.locals[name] = Var(name_with_suffix, typ, dynamic_type)
 
-        return Var(name_with_suffix, typ)
+        return Var(name_with_suffix, typ, dynamic_type)
 
     def reassign(self, var:Var, value):
         self.locals[var.value] = value
 
-    def symbol(self, prefix='sym', typ=tm.IntType(size=32)):
+    def symbol(self, prefix='sym', typ=tm.IntType(size=32), dyn_type=False):
         """Returns a safe new name"""
-        return self.register(prefix, typ=typ)   
+        return self.register(prefix, typ, dyn_type)   
 
     def get(self, name):
         if not name in self.locals:

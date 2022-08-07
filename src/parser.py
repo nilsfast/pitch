@@ -2,7 +2,7 @@ import ply.yacc as yacc
 from codegen import *
 from util.type_manager import *
 
-from lexer import tokens
+from lexer import tokens, lineno
 
 
 def p_module(p):
@@ -11,7 +11,9 @@ def p_module(p):
 
 def p_definitions(p):
     ''' definitions : function definitions
-                 | function'''
+                 | function
+                 | compiler_directive
+                 | compiler_directive definitions'''
     if len(p) == 2:
         p[0] = [p[1]]
     else:
@@ -42,7 +44,9 @@ def p_statement(p):
                 | function
                 | call SEMI
                 | conditional
-                | return '''
+                | for
+                | return
+                | compiler_directive '''  
     p[0] = p[1]
 
 def p_return(p):
@@ -53,6 +57,10 @@ def p_return(p):
 def p_conditional(p):
     ''' conditional : IF expr block ELSE block'''
     p[0] = Conditional(condition=p[2], if_true=p[3], if_false=p[5])
+
+def p_for(p):
+    ''' for : FOR ID IN ID block'''
+    p[0] = ForLoop(var=p[2], iteartor=p[4], content=p[5])
 
 #def p_for(p):
 #    ''' for : FOR LPAREN expr RPAREN block 
@@ -66,7 +74,9 @@ def p_struct(p):
 
 def p_assignment(p):
     ''' assignment : ID COLON type EQUALS expr SEMI
+                | ID COLON type empty empty SEMI
                 | ID EQUALS expr SEMI
+                | array_index EQUALS expr SEMI
                 '''
     if(len(p) == 5):
         p[0] = Reassignment(id=p[1],value=p[3])
@@ -98,13 +108,13 @@ def p_array_index(p):
 def p_value(p):
     ''' value : var
               | number
-              | string
               | call
               | acc_call
               | bool
               | array
               | array_index
-              | AMP var'''
+              | AMP var
+              | string'''
     
     if p[1] == '&':
         p[0] = Reference(id=p[2], mut=False)
@@ -128,13 +138,15 @@ def p_type(p):
     '''type : I32
             | I64
             | AMP I32
-            | arrtype'''
+            | arrtype
+            | ID'''
+    print("TYPE", p[1])
     if len(p) == 3:
-        p[0] = Type(p[1:]).resolve()
+        p[0] = BaseType(p[1:]).resolve()
     elif len(p) == 4:
-        p[0] = Type(p[1:]).resolve()
+        p[0] = BaseType(p[1:]).resolve()
     else:
-        p[0] = Type([p[1]]).resolve()
+        p[0] = BaseType([p[1]]).resolve()
 
 
 def p_expr(p):
@@ -205,7 +217,10 @@ def p_parameter(p):
 
     p[0] = Parameter(id=p[1], t=p[3])
 
-
+def p_compiler_directive(p):
+    ''' compiler_directive : COMP_DIR '''
+    print("PARSER GOT", type(p[1]), p[1])
+    p[0] = CompilerDirective(p[1])
 
 
 def p_number(p):

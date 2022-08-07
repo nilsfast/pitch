@@ -1,11 +1,9 @@
-import sys
-sys.path.insert(0, "../..")
-
 import ply.lex as lex
 
+lineno = 0
 # Reserved words
 reserved = (
-    'MUT', 'FN', 'RETURN', 'IF', 'ELSE','TRUE', 'FALSE', 'STRUCT', 'TYPE', 'I32', 'I64',
+    'MUT', 'FN', 'RETURN', 'IF', 'ELSE','TRUE', 'FOR', 'FALSE', 'STRUCT', 'TYPE', 'I32', 'I64', 'IN',
 )
 
 tokens = reserved + (
@@ -29,6 +27,9 @@ tokens = reserved + (
 
     # Conditional operator (?)
     #'CONDOP',
+
+    # Compiler directive
+    'COMP_DIR',
 
     # Delimeters ( ) [ ] { } , . ; :
     'LPAREN', 'RPAREN',
@@ -72,6 +73,8 @@ t_LE = r'<='
 t_GE = r'>='
 t_EQ = r'=='
 t_NE = r'!='
+
+#t_HASHTAG = r'#'
 
 # Assignment operators
 
@@ -142,9 +145,11 @@ def t_comment(t):
     t.lexer.lineno += t.value.count('\n')
 
 # Preprocessor directive (ignored)
-def t_preprocessor(t):
-    r'\#(.)*?\n'
+def t_COMP_DIR(t):
+    r'\#.*'
+    print("LEXER GOT", t)
     t.lexer.lineno += 1
+    return t
 
 
 def t_error(t):

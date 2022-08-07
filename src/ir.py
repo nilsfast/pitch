@@ -14,11 +14,19 @@ class IRBase():
 
 @dataclass
 class IRAlloc(IRBase):
-    pass
+    var: Var
+
+    def compile(self, wr: Writer, sc: Scope):
+        wr.emit(1, f'%{self.var.value} = alloca {self.var.type.str}, align 8')
 
 @dataclass
 class IRStore(IRBase):
-    pass
+    var: Var
+    data: Var
+
+    def compile(self, wr: Writer, sc: Scope):
+        wr.emit(1, f'store {self.data.type.str} %{self.data.value}, {self.var.type.str} %{self.var.value}')
+    
 
 
 
@@ -26,15 +34,18 @@ class IRStore(IRBase):
 class IRInitArray(IRBase):
     pass
 
+@dataclass
+class IRVariable():
+    var: ...
 
 @dataclass
 class IRBitcast(IRBase):
-    from_type: Type
-    to_type: Type
+    from_type: BaseType
+    to_type: BaseType
     data: ...
 
     def compile(self, wr: Writer, sc: Scope, dest: Var):
-        wr.emit(1,f'%{dest.value} = bitcast {self.to_type.str} {self.data} to i32*')
+        wr.emit(1,f'%{dest.value} = bitcast {self.to_type.str} %{self.data} to i32*')
 
 
 
@@ -50,10 +61,33 @@ class IRArrayLoad(IRBase):
 
         wr.emit(1, f'%{dest.value} = load {dest.type.str}, {Ref(dest.type).str} %{ptr.value}')
 
+@dataclass
+class IRArrayPtr(IRBase):
+    array: Var
+    index: Var
+
+    def compile(self, wr: Writer, sc: Scope, dest: Var):
+       
+        wr.emit(1, f'%{dest.value} = getelementptr {dest.type.to.str}, {dest.type.str} %{self.array.value}, {self.index.type.str} %{self.index.value}')
+
+
 
 @dataclass
 class IRLoad(IRBase):
-    pass
+    pass    
+    
+
+@dataclass
+class IRCall(IRBase):
+    ret: ...
+    argtypes: ...
+    arguments: ...
+    name: ...
+
+    def compile(self, wr: Writer, sc: Scope, dest: Var):
+        argstr = ', '.join(a.str for a in self.argtypes)
+        paramstr = ', '.join(str(a.type.str)+' '+ (a.value[:] if a.value[0] == '@' else "%"+a.value) for a in self.arguments)
+        wr.emit(1, f'%{dest.value} = call {self.ret.type.str} ({argstr}) @{self.name}({paramstr})') 
 
 
 @dataclass

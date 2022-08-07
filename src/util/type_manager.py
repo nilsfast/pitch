@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from multiprocessing.dummy import Array
 
 @dataclass
 class TypeSignature():
@@ -85,17 +84,26 @@ class Ref():
 
     @property
     def str(self):
-        return f"{self.to.str}*"
+        #return f"{self.to.str}*"
+        return 'ptr'
+
 
     def ptr_depth(self, o=0):
         if type(self.to) != Ref:
             return o+1
         return self.to.ptr_depth(o=o+1)
-
+    
     @property
     def memsize(self):
         return self.to.memsize 
 
+@dataclass
+class DynamicType():
+    pass
+
+    @property
+    def str(self):
+        return "..."
 
 
 @dataclass
@@ -106,17 +114,30 @@ class NoType():
         return 0
 
 @dataclass
-class Type():
+class ResultType():
+    pass
+
+    def ptr_depth(o=0):
+        return 0
+
+    @property
+    def str(self):
+        return '%pitch.res'
+
+@dataclass
+class BaseType():
     t: ...
     def __init__(self, t) -> None:
         self.t = t
     
     def resolve(self):
         print("[TYM][DBG]", self.t)
+        if self.t[0] == "Result":
+            return ResultType() 
         if type(self.t[0]) == ArrayType:
             return self.t[0]
         if self.t[0] == '&':
-            return Ref(Type(self.t[1:]).resolve())
+            return Ref(BaseType(self.t[1:]).resolve())
         if self.t[0][0] == 'i':
             return IntType(size=int(self.t[0][1:]))
         

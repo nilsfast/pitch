@@ -6,3 +6,4 @@ old
 build/*
 misc
 parsetab.py
+*.code-workspace
