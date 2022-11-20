@@ -3,7 +3,7 @@ import ply.lex as lex
 lineno = 0
 # Reserved words
 reserved = (
-    'MUT', 'FN', 'RETURN', 'IF', 'ELSE','TRUE', 'FOR', 'FALSE', 'STRUCT', 'TYPE', 'I32', 'I64', 'IN',
+    'LET', 'FN', 'RETURN', 'IF', 'ELSE','TRUE', 'FOR', 'WHILE', 'FALSE', 'STRUCT', 'TYPE', 'IN', 'OR',
 )
 
 tokens = reserved + (
@@ -13,7 +13,7 @@ tokens = reserved + (
     'INTTYPE',
 
     # Operators (+,-,*,/,%,|,&,~,^,<<,>>, ||, &&, !, <, <=, >, >=, ==, !=)
-    'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'MOD', 'AMP', 'LOR', 'LAND', 'LNOT', 'EQ', 'LT', 'GT', 'GE', 'LE', 'NE',
+    'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'MOD', 'AMP', 'LOR', 'LAND', 'LNOT', 'EQ', 'LT', 'GT', 'GE', 'LE', 'NE', 'TILDE', 'DEREF',
 
     # Assignment (=, *=, /=, %=, +=, -=, <<=, >>=, &=, ^=, |=)
     'EQUALS', 
@@ -55,11 +55,12 @@ def t_NEWLINE(t):
 t_PLUS = r'\+'
 t_MINUS = r'-'
 t_TIMES = r'\*'
+t_DEREF = r'\*+'
 t_DIVIDE = r'/'
 t_MOD = r'%'
 #t_OR = r'\|'
-t_AMP = r'&'
-#t_NOT = r'~'
+t_AMP = r'&+'
+t_TILDE = r'~'
 #t_XOR = r'\^'
 #t_LSHIFT = r'<<'
 #t_RSHIFT = r'>>'
@@ -123,6 +124,7 @@ for r in reserved:
 def t_ID(t):
     r'[A-Za-z_][\w_]*'
     t.type = reserved_map.get(t.value, "ID")
+    #print(t)
     return t
 
 
@@ -147,13 +149,14 @@ def t_comment(t):
 # Preprocessor directive (ignored)
 def t_COMP_DIR(t):
     r'\#.*'
-    print("LEXER GOT", t)
+    #print("LEXER GOT", t)
     t.lexer.lineno += 1
     return t
 
 
 def t_error(t):
-    print("WARN: Illegal character %s" % repr(t.value[0]))
+    #print("WARN: Illegal character %s" % repr(t.value[0]))
     t.lexer.skip(1)
 
 lexer = lex.lex()
+#print(lexer)

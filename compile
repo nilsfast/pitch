@@ -3,4 +3,4 @@
 lli --opaque-pointers build/out.ll 
 #gcc build/out.s -o build/a.out
 #./build/a.out
-echo $?
+#echo $?

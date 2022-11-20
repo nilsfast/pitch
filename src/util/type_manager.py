@@ -1,12 +1,32 @@
 from dataclasses import dataclass
+import re
+
+from error import ice
+
+
+def resolve_type(typestr):
+    print("[ast][rst] resolving", typestr)
+    if typestr[0] == "&":
+        return Ref(resolve_type(typestr[1:]))
+    if re.search(r"i\d+", typestr):
+        return IntType(32)
+    ice(f"Type '{typestr}' could not be resolved.")
 
 @dataclass
-class TypeSignature():
+class Type():
+    pass
+
+
+
+
+
+@dataclass
+class TypeSignature(Type):
     ret: ...
     args: ...
 
 @dataclass
-class ArrayType():
+class ArrayType(Type):
     member_type: ...
     length: ...
     
@@ -22,7 +42,7 @@ class ArrayType():
         return int(self.length) * self.member_type.memsize
 
 @dataclass
-class ArrType():
+class ArrType(Type):
     pointer: ...
     member_type: ...
     size: ...
@@ -40,7 +60,7 @@ class ArrType():
         return int(self.length) * self.member_type.memsize
 
 @dataclass
-class StructType():
+class StructType(Type):
     name: ...
     members: ...
     
@@ -50,7 +70,7 @@ class StructType():
 
     @property
     def sign_str(self):
-        print("struct members", list(map(lambda t: t.str, self.members)))
+        #print("struct members", list(map(lambda t: t.str, self.members)))
         return f"{{{', '.join(list(map(lambda t: t.str, self.members)))}}}"
         
 
@@ -63,7 +83,7 @@ class StructType():
 
 
 @dataclass
-class IntType():
+class IntType(Type):
     size: int
 
     @property
@@ -79,7 +99,7 @@ class IntType():
 
 
 @dataclass
-class Ref():
+class Ref(Type):
     to: ...
 
     @property
@@ -98,7 +118,7 @@ class Ref():
         return self.to.memsize 
 
 @dataclass
-class DynamicType():
+class DynamicType(Type):
     pass
 
     @property
@@ -107,14 +127,23 @@ class DynamicType():
 
 
 @dataclass
-class NoType():
+class NoType(Type):
     pass
 
     def ptr_depth(o=0):
         return 0
+@dataclass
+class TemplateType(Type):
+
+    base: ...
+    options: ...
+
+    def ptr_depth(o=0):
+        return 0
+
 
 @dataclass
-class ResultType():
+class ResultType(Type):
     pass
 
     def ptr_depth(o=0):
@@ -125,19 +154,24 @@ class ResultType():
         return '%pitch.res'
 
 @dataclass
-class BaseType():
+class BaseType(Type):
     t: ...
     def __init__(self, t) -> None:
         self.t = t
     
     def resolve(self):
-        print("[TYM][DBG]", self.t)
+        print("[TYM][DBG] BaseType", self.t)
         if self.t[0] == "Result":
             return ResultType() 
         if type(self.t[0]) == ArrayType:
             return self.t[0]
         if self.t[0] == '&':
+            print("REF!")
             return Ref(BaseType(self.t[1:]).resolve())
+        if self.t[0][0] == '&':
+            print("REF!")
+            return Ref(BaseType([self.t[0][1:], self.t[1]]).resolve())
+        
         if self.t[0][0] == 'i':
             return IntType(size=int(self.t[0][1:]))
         

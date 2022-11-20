@@ -15,7 +15,7 @@ COM_RET = "cr"
 RETVAL = "retptr"
 
 def check_types(a, b):
-    print("checking types", a, b)
+    print("[CMP][TYC] Checking types", a, b)
 
     # TODO implement real type system with types as arguments
     if ResultType in [type(a), type(b)]:
@@ -70,24 +70,15 @@ class Module():
         tt.register("Ok", TypeSignature(ResultType(), Ref(to=None)))
         tt.register("Err", TypeSignature(ResultType(), Ref(to=None)))
         tt.register("Unwrap", TypeSignature(ResultType(), IntType(32)))
-        print(tt.table)
         for fn in self.definitions:
             fn.typecheck(tt)
         
 
     def compile(self, wr:Writer, sc:Scope):
-        wr.emit_post('declare i8* @malloc(i32)')
-        wr.emit_post('declare i32 @printf(i8*, ...)')
-        
-        
-        # TODO Move to module
+        wr.emit_post('declare ptr @malloc(i32)')
+        wr.emit_post('declare i32 @printf(ptr, ...)')
         wr.emit_pre('')
-
-
-
         wr.emit(0, '')
-        #wr.emit(0, '@fmtstr = private constant [4 x i8] c"%p  "')
-
         for fn in self.definitions:
             # TODO move scope stuff here; add support for globals
             fn.compile(wr, sc)
@@ -108,13 +99,12 @@ class Function():
             return self.block.cpv()
     
     def typecheck(self, tt: TypeTable):
-        #TODO scope the type table
         tt.register(self.name, TypeSignature(ret=self.rettype, args=[]))
         new_tt = TypeTable(deepcopy(tt.table))
         #print("NEW type table", new_tt.table)
         new_tt.register("__self__", TypeSignature(ret=self.rettype, args=[]))
         self.block.typecheck(new_tt)
-        print(f"Function {self.name} type table: {new_tt.table}")
+        #print(f"Function {self.name} type table: {new_tt.table}")
 
     def compile(self, wr, sc:Scope):
         safe_name = sc.register(self.name, typ=TypeSignature(ret=self.rettype, args=[]))
@@ -123,7 +113,7 @@ class Function():
         com_ret = child_sc.register(COM_RET) # Common return label
         retval = child_sc.register(RETVAL, typ=Ref(to=self.rettype)) # Common return value
 
-        print("[DBG][CMP][FUN][LOC]", sc.locals)
+        print("[CMP][FUN] Locals:", sc.locals)
 
         arg_names_and_ptr = []
         if self.params != [None]:
@@ -135,7 +125,7 @@ class Function():
         else:
             args_type = []
 
-        print("[DBG][CMP][FUN][ARG]", self.params, list(arg_names_and_ptr))
+        print("[CMP][FUN] Arguments:", self.params, list(arg_names_and_ptr))
 
         wr.emit(0, f'define {self.rettype.str} @{safe_name.value}({", ".join(args_type)}) {{')
 
@@ -183,7 +173,7 @@ class Block():
     def compile(self, wr, sc):
         for exp in self.content:
             dest = sc.symbol()
-            print("dest", dest)
+            print("[CMP][BLO] Block dest", dest)
             exp.compile(wr, sc, dest)
 
 
@@ -193,7 +183,7 @@ class CompilerDirective():
     content: str
 
     def compile(self, wr, sc, dest=None):
-        print("COMPILER DIRECTIVE", self.content)
+        #print("COMPILER DIRECTIVE", self.content)
         pass
 
 @dataclass
@@ -208,7 +198,7 @@ class Return():
         wr.emit(1, f'; return')
         #print("RET SC", sc.locals)
         return_value = sc.symbol(typ=sc.get(RETVAL).type.to)
-        print("RETVAL", return_value)
+        print("[CMP][RET] Return value:", return_value)
         self.value.compile(wr, sc, return_value)
         wr.emit(1, f'store {return_value.type.str} %{return_value.value}, {sc.get(RETVAL).type.str} %{sc.get(RETVAL).value}, align 8')
         wr.emit(1, f'br label %{sc.get(COM_RET).value}')
@@ -225,6 +215,11 @@ class Parameter():
     id: str
     t: str
 
+@dataclass
+class MR():
+    test: ...
+    def compile(self, wr, sc:Scope, dest):
+        pass
 
 @dataclass
 class String():
@@ -234,8 +229,7 @@ class String():
         return ArrayType(IntType(size=8), -1)
 
     def compile(self, wr, sc:Scope, dest):
-        value = self.value[1:-1]
-        value = value.replace('n', '0A')
+        value = self.value.replace('n', '0A')
         length = len(value) - (value.count("\\")*2)
         strconst = sc.register('@str', Ref(ArrayType(IntType(size=8), length)) )
         
@@ -246,6 +240,13 @@ class String():
         return strconst
 
 # TODO find a way to fix this in parser with mult reference (value)
+
+@dataclass
+class V():
+    t: Type
+    name: str
+
+
 @dataclass
 class Variable():
     name: str
@@ -254,25 +255,28 @@ class Variable():
         return tt.get(self.name)
 
     def compile(self, wr, sc, dest):
-        print("LOAD VAR ", self.name, "to", dest)
+        print("[CMP][VAR] Loading", self.name, "to", dest)
         location = sc.get(self.name)
         if not location:
             comp_err(f"Variable '{self.name}' does not exist")
 
-        print("[DBG][CMP][VAR]", location, "DEPTH", location.type.ptr_depth())
-        if location.type.ptr_depth() == 0:
-            wr.emit(1, f'%{dest.value} = add {location.type.str} %{location.value}, 0')
-        else:
-            wr.emit(1, f"; accessing `{location.value}`, d={location.type.ptr_depth()}")
-            ptr = location
-            while ptr.type.ptr_depth() > 0:
-                if ptr.type.ptr_depth() == 1:
-                    target = dest
-                else:
-                    target = sc.symbol(typ=ptr.type.to)
-                wr.emit(1, f'%{target.value} = load {target.type.str}, {ptr.type.str} %{ptr.value}, align 4')
-                ptr = target
-            
+        #print("[CMP][VAR]", location, "DEPTH", location.type.ptr_depth())
+        #if location.type.ptr_depth() == 0:
+        #    wr.emit(1, f'%{dest.value} = add {location.type.str} %{location.value}, 0')
+        #else:
+        wr.emit(1, f"; accessing '{location.value}', d={location.type.ptr_depth()}")
+        
+        IRLoad(location, dest).compile(wr, sc)
+        
+        #ptr = location
+        #while ptr.type.ptr_depth() > 0:
+        #    if ptr.type.ptr_depth() == 1:
+        #        target = dest
+        #    else:
+        #        target = sc.symbol(typ=ptr.type.to)
+        #    wr.emit(1, f'%{target.value} = load {target.type.str}, {ptr.type.str} %{ptr.value}, align 4')
+        #    ptr = target
+        
 
 
 @dataclass
@@ -304,7 +308,7 @@ class MathExp():
     right: ...
 
     def compile(self, wr, sc, dest):
-        OPS = {'+': 'add', '-': 'sub', '*': 'mul', }
+        OPS = {'+': 'add', '-': 'sub', '*': 'mul', '<': 'icmp slt'}
         left = sc.symbol()
         right = sc.symbol()
         self.left.compile(wr, sc, left)
@@ -339,8 +343,8 @@ class Conditional():
         self.condition.compile(wr, sc, test_var)
      
         # Compile the expression and branch
-        true_label = sc.symbol('iftrue')
-        false_label = sc.symbol('iffalse')
+        true_label = sc.register('iftrue')
+        false_label = sc.register('iffalse')
         wr.emit(1, f'br i1 %{test_var.value}, label %{true_label.value}, label %{false_label.value}')
 
         # Compile true section
@@ -348,16 +352,16 @@ class Conditional():
         self.if_true.compile(wr, sc)
         
         if not self.if_true.returns():
-            end_label = sc.symbol('ifend')
+            end_label = sc.register('ifend')
             wr.emit(1, f'br label %{end_label.value}')
         
         wr.emit(0, f'{false_label.value}:')
         self.if_false.compile(wr, sc)
 
         if not self.if_true.returns():
-            wr.emit(1, f'br label %{end_label}')
-            wr.emit(0, f'{end_label}:')
-            wr.emit(1, f'%{dest.value} = load i32, ptr %{sc.get(RETVAL).value}, align 8') # TODO remove hard-coded type
+            wr.emit(1, f'br label %{end_label.value}')
+            wr.emit(0, f'{end_label.value}:')
+            wr.emit(1, f'%{dest.value} = load {dest.type}, ptr %{sc.get(RETVAL).value}, align 8') # TODO remove hard-coded type
 
 @dataclass
 class ForLoop():
@@ -372,6 +376,8 @@ class ForLoop():
         index = sc.register('forvar')
         IRVariable(index).compile(wr, sc, dest)
 
+
+
 @dataclass
 class Call():
     fn: str
@@ -384,8 +390,8 @@ class Call():
         return tt.get(self.fn).ret
     
     def compile(self, wr, sc:Scope, dest):
-        print("CALL to", self.fn)
-        print("DEST", dest)
+        print("[CMP][CLL] Calling", self.fn)
+        print("[CMP][CLL] Call dest", dest)
         
         if self.fn == 'printf':
             printsig = [Ref(to=IntType(size=8)), DynamicType()]
@@ -394,12 +400,13 @@ class Call():
             arg_list = []
             for i,arg in enumerate(self.args):
                 if arg:
+                    #print("arg smyt", sc.locals)
                     arg_dest = sc.symbol(typ=printargs[i], dyn_type=True)
                     arg.compile(wr, sc, arg_dest)
                     arg_list.append(arg_dest)
             IRCall(printret, printsig, arg_list, 'printf').compile(wr, sc, dest)    
         elif self.fn == 'Ok':
-            print("OK fuction")
+            print("[CMP][CLL] OK fuction")
             okret = sc.symbol(typ=ResultType())
             value = sc.symbol(typ=IntType(32))
             value_ptr = sc.symbol(typ=Ref(to=IntType(32)))
@@ -412,27 +419,27 @@ class Call():
             result = sc.symbol(typ=ResultType())
             self.args[0].compile(wr, sc, result)
             extracted = sc.symbol(typ=Ref(to=IntType(32)))
-            print("Unwrap function")
+            print("[CMP][CLL] Unwrap function")
             wr.emit(1, f'%{extracted.value} = extractvalue %pitch.res %{result.value}, 1')
             wr.emit(1, f'%{dest.value} = load {extracted.type.to.str}, ptr %{extracted.value}')
         elif self.fn == 'alloc':
             size = self.args[0].value
-            i8ptr = sc.symbol(typ=Ref(to=IntType(size=8))) # make i8 ptr for malloc
-            wr.emit(1, f'%{i8ptr.value} = call i8* (i32) @malloc(i32 {size})') 
-            wr.emit(1, f'%{dest.value} = bitcast i8* %{i8ptr.value} to {dest.type.str}')
-
-
-
+            #i8ptr = sc.symbol(typ=Ref(to=IntType(size=8))) # make i8 ptr for malloc
+            wr.emit(1, f'%{dest.value} = call ptr (i32) @malloc(i32 {size})') 
+            #wr.emit(1, f'%{dest.value} = bitcast i8* %{i8ptr.value} to {dest.type.str}')
+        elif self.fn == 'realloc':
+            size = self.args[0].value
+            wr.emit(1, f'%{dest.value} = call ptr (i32) @realloc(i32 {size})') 
+        
         else:
-            
             valid_fn = sc.get(self.fn)
             if not valid_fn:
-                print("[ERR][CMP] The function could not be found")
+                comp_err(f'Cound not find function {self.fn}')                
 
             arg_list = []
-            print("CALL FN TYPE SIGN", valid_fn.type.args)
+            print("[CMP][CLL] Function arguments:", valid_fn.type.args)
             for i,arg in enumerate(self.args):
-                print("CALL ARG LOOP", arg)
+                print("[CMP][CLL] Processing argument", arg)
                 if arg:
                     arg_dest = sc.symbol(typ=valid_fn.type.args[i])
                     arg.compile(wr, sc, arg_dest)
@@ -450,7 +457,6 @@ class AccCall():
         pass
 
 
-
 @dataclass
 class Expression():
     op: str
@@ -465,13 +471,24 @@ class Expression():
         
         return leftt if leftt.size > 0 else rightt
 
-    def compile(self, wr, sc, dest):
-        OPS = {'+': 'add', '-': 'sub', '*': 'mul nuw', '==': 'icmp eq' }
-        left = sc.symbol(typ=dest.type)
-        right = sc.symbol(typ=dest.type)
-        self.left.compile(wr, sc, left)
-        self.right.compile(wr, sc, right)
-        wr.emit(1, f'%{dest.value} = {OPS[self.op]} {dest.type.str} %{left.value}, %{right.value}')
+    def compile(self, wr, sc:Scope, dest):
+        OPS = {'+': 'add', '-': 'sub', '*': 'mul nuw', '==': 'icmp eq', '<':'icmp slt' }
+        BIN_OPS = ['<', '==']
+
+        if self.op in BIN_OPS:
+            left = sc.symbol(dyn_type=True)
+            right = sc.symbol(dyn_type=True)
+            self.left.compile(wr, sc, left)
+            self.right.compile(wr, sc, right)
+            if left.type != right.type:
+                ice("Fatal inequality of operation types")
+            wr.emit(1, f'%{dest.value} = {OPS[self.op]} {left.type.str} %{left.value}, %{right.value}')
+        else:
+            left = sc.symbol(typ=dest.type)
+            right = sc.symbol(typ=dest.type)
+            self.left.compile(wr, sc, left)
+            self.right.compile(wr, sc, right)
+            wr.emit(1, f'%{dest.value} = {OPS[self.op]} {dest.type.str} %{left.value}, %{right.value}')
 
 @dataclass
 class Reference():
@@ -484,6 +501,53 @@ class Reference():
     def compile(self, wr, sc, dest):
         pass
 
+@dataclass 
+class Deref():
+    
+    name: str
+    depth: int
+    def resolve(self):
+        return self
+
+    def typecheck(self, tt:TypeTable):
+        print("[DBG][DER]", tt.get(self.ref))
+
+    def dest_compile(self, wr: Writer, sc: Scope):
+        print("[CMP][DER] begin dereference")
+        scope_object = sc.get(self.name)
+        print("[CMP][DER] scope says", scope_object)
+
+        reference_root = scope_object
+        for _ in range(self.depth):
+            print("[CMP][DER] dereferencing...")
+            reference_root = deref_one_layer(wr, sc, reference_root)
+
+            if reference_root.type.ptr_depth() == 1:
+                print("PTR DEPTH == 1")
+        print("[CMP][DER] result", reference_root)
+        return reference_root
+
+    def compile(self, wr, sc: Scope, dest):
+        depth = self.ref.count("*")
+        name = self.ref[depth:]
+        print("DEREF NAME", name)
+        to_deref = sc.get(name)
+        wr.emit(1, f'; Dereference')
+
+        # dereference the pointer to get a pointer to where the referenced data lives
+        reference_root = to_deref
+        for _ in range(depth):
+            print("DEREF PASS")
+            reference_root = deref_one_layer(wr, sc, reference_root)
+
+            if reference_root.type.ptr_depth() == 1:
+                print("PTR DEPTH == 1")
+        return reference_root
+        
+        #wr.emit(1, f'%{dest.value} = load i32, {reference_root.type.str} %{reference_root.value}')
+
+        # Store the data from reference root 
+        #wr.emit(1, f'store {new_val.type.str} %{new_val.value}, {reference_root.type.str} %{reference_root.value}, align 8')
 
 @dataclass
 class Reassignment():
@@ -500,40 +564,57 @@ class Reassignment():
         wr.emit(1, f'; Reassignment')
 
         
-        print("reassign", self.value)
+        print("reassign", self.value, type(self.value))
+
         if type(self.id) == str:   
-            to_reassign = sc.get(self.id)
+            to_reassign: Var = sc.get(self.id)
             if not to_reassign:
                 comp_err(f"'{self.id}' could not be found.")
-        else:
-            to_reassign = sc.symbol(typ=Ref(to=IntType(32)))
-            self.id.compile(wr, sc, to_reassign)
-            print("arr ind ptr",to_reassign)
-
+        elif type(self.id) == Deref:
+            # TODO: why
             
+            to_reassign = self.id.dest_compile(wr, sc)
 
-        if type(self.value) == Reference:
+            #to_reassign = sc.symbol(typ=Ref(to=IntType(32)))
+            #self.id.compile(wr, sc, to_reassign)
+        else:
+            ice("Left hand side derefence error")
+        print("[CMP][RAS] Reassigning",to_reassign)
+
+             
+        
+
+        if type(self.value) == ArrayType:
+            malloc_result = sc.symbol(typ=Ref(to=None))
+            self.value.compile(wr, sc, malloc_result)
+            IRStore(to_reassign, malloc_result).compile(wr, sc)
+        
+        elif type(self.value) == Reference:
             var_to_ref = sc.get(self.value.id.name) # Variable that shall be referenced
             wr.emit(1, f'store {var_to_ref.type.str} %{var_to_ref.value}, {to_reassign.type.str} %{to_reassign.value}, align 8')
+        
         else:
-            new_val = sc.symbol()
-            self.value.compile(wr, sc, new_val)
-
-            # XXX: is this stil valid?
-            if to_reassign.type.ptr_depth() == 0:
-                print("DOES THIS RUN???")
-                # for registers and vars (?)
-                sc.reassign(to_reassign, new_val) 
-            else:
-                # Explaination: dereference the pointer to get a pointer to where the referenced data lives
-                reference_root = to_reassign
-                while reference_root.type.ptr_depth() > 1:
-                    reference_root = deref_one_layer(wr, sc, reference_root)
-                
-                # Store the data from reference root 
-                wr.emit(1, f'store {new_val.type.str} %{new_val.value}, {reference_root.type.str} %{reference_root.value}, align 8')
-
-            print("reassign", to_reassign, "to", new_val)
+            new_value = sc.symbol(typ=to_reassign.type)
+            self.value.compile(wr, sc, new_value)            
+            IRStore(to_reassign, new_value).compile(wr, sc)            
+            #new_val = sc.symbol()
+            #self.value.compile(wr, sc, new_val)
+#
+            ## XXX: is this stil valid?
+            #if to_reassign.type.ptr_depth() == 0:
+            #    print("DOES THIS RUN???")
+            #    # for registers and vars (?)
+            #    sc.reassign(to_reassign, new_val) 
+            #else:
+            #    # Explaination: dereference the pointer to get a pointer to where the referenced data lives
+            #    reference_root = to_reassign
+            #    while reference_root.type.ptr_depth() > 1:
+            #        reference_root = deref_one_layer(wr, sc, reference_root)
+            #    
+            #    # Store the data from reference root 
+            #    wr.emit(1, f'store {new_val.type.str} %{new_val.value}, {reference_root.type.str} %{reference_root.value}, align 8')
+#
+            ##print("reassign", to_reassign, "to", new_val)
 
 @dataclass
 class ArrayIndex():
@@ -541,44 +622,30 @@ class ArrayIndex():
     i: ...
     
     def compile(self, wr, sc:Scope, dest):
+        wr.emit(1,'; array access')
         index = sc.symbol(typ=IntType(size=32))
         self.i.compile(wr,sc,index)
+
         # TODO add i compile, (change to value in parser)
-        wr.emit(1,'; array access')
         ## TODO: Runtime Bounds check?
         array_ptr = sc.get(self.var.name)
         array = sc.symbol(typ=Ref(to=None))
         wr.emit(1, f'%{array.value} = load {array.type.str}, {array_ptr.type.str} %{array_ptr.value}')
 
         if type(dest.type) == Ref:
-            wr.emit(1, f'%{dest.value} = getelementptr ptr, ptr %sym2, i32 0')
+            wr.emit(1, f'%{dest.value} = getelementptr ptr, ptr %{array.value}, {index.type.str} %{index.value}')
         else:
             value_ptr = sc.symbol(typ=Ref(to=None))
-            wr.emit(1, f'%{value_ptr.value} = getelementptr ptr, ptr %sym2, i32 0')
+            wr.emit(1, f'%{value_ptr.value} = getelementptr ptr, ptr %{array.value}, {index.type.str} %{index.value}')
             wr.emit(1, f'%{dest.value} = load {dest.type.str}, {value_ptr.type.str} %{value_ptr.value}')
             
-        
-        #IRArrayPtr()
-
-        #IRLoad(array_ptr).compile(wr, sc, array)
-        #if type(dest.type) == Ref:
-        #    struct_load_dest = sc.symbol(typ=dest.type)
-        #    IRStructLoad(struct, 0).compile(wr, sc, struct_load_dest)
-        #    IRArrayPtr(struct_load_dest, index).compile(wr, sc, dest)
-        #else:
-        #    load_dest = sc.symbol(typ=struct.type.to.members[0])
-        #    IRStructLoad(struct, 0).compile(wr, sc, load_dest)
-        #    IRArrayLoad(load_dest, index).compile(wr, sc, dest)
-
-
-
 @dataclass
 class ArrayLiteral():
     members: ...
     # TODO: Type filling ?
     def compile(self, wr, sc, dest):
         wr.emit(1, f'; array const')
-        print("array const", self.members)
+        print("[CPM][ARR] Array members:", self.members)
 
         arr_const = sc.register('arrconst', typ=ArrayType(member_type=IntType(size=32), length=len(self.members)))
         arr_members = list(map(lambda m: IntType(size=32).str+' '+str(m.value), self.members))
@@ -591,8 +658,9 @@ class ArrayLiteral():
 
 @dataclass
 class Assignment():
-    id: str
-    vartype: ...
+    #id: str
+    #vartype: ...
+    var: V
     value: ...
     
     def typecheck(self, tt:TypeTable):
@@ -601,78 +669,79 @@ class Assignment():
             comp_err(f"Cannot assign {self.value.get_type(tt)} to {self.vartype}")
 
 
-    def compile(self, wr, sc:Scope, dest):
+    def compile(self, wr:Writer, sc:Scope, dest):
             # TODO static-size array
-        
-        if type(self.vartype) == ArrayType:
-            print("ARRAY ASSIGN")
+        print("[cmp][ass]",self.var)
 
-            array = sc.register(self.id, Ref(to=None))
-            IRAlloc(array).compile(wr, sc)
-            malloc_result = sc.symbol(typ=Ref(to=None))
-            self.value.compile(wr, sc, malloc_result)
-            IRStore(array, malloc_result).compile(wr, sc)
-            #arr_var = sc.register(self.id, self.vartype)
-            
-            ## TODO break up into / use IR* Classes
-            #wr.emit_post('declare void @llvm.memcpy.p0.p0.i32(ptr, ptr, i32, i1)') 
-            #struct = sc.register('vec', NoneType)
-            #struct.type = StructType(struct.value, [Ref(IntType(size=32)), IntType(size=64), IntType(size=64)]) # TODO make dynamic
-            #wr.emit_pre(f'{struct.type.str} = type {struct.type.sign_str}') # ptr, size, alloc
-#
-            ## value result is a pointer to the member type
-            #value_result = sc.symbol(typ=Ref(to=self.vartype.member_type))
-            #self.value.compile(wr, sc, value_result)
-            #wr.emit(1, f'; array init')
-            #
-            #if self.vartype.length == '*' or not self.vartype.length:
-            #    arr_size = int(self.vartype.member_type.memsize) * len(self.value.members)
+        wr.emit(1, "; assignment")
+
+
+        #if type(self.vartype) == ArrayType:
+        #    print("[CMP][ASS] Assigning array")
+        #    array = sc.register(self.id, Ref(to=None))
+        #    IRAlloc(array).compile(wr, sc)
+        #    malloc_result = sc.symbol(typ=Ref(to=None))
+        #    self.value.compile(wr, sc, malloc_result)
+        #    IRStore(array, malloc_result).compile(wr, sc)
+        #else:
+
+        variable = sc.register(self.var.name, typ=self.var.t)
+        value = sc.symbol("val", typ=self.var.t)    
+        self.value.compile(wr, sc, value) 
+        wr.emit(1, f'%{variable.value} = alloca {self.var.t.str}, align 8')
+        IRStore(variable, value).compile(wr, sc)
+
+            #    wr.emit(1, f'store {value.type.str} %{value.value}, {variable.type.str} %{variable.value}, align 8')
+
+
+            # Just a regular variable. Always alloc and store. opt will take care
+            #if self.vartype.ptr_depth() == 0:
+            #    value = sc.symbol(typ=self.vartype)
             #else:
-            #    arr_size = self.vartype.memsize
-            #
-            #the_vector = sc.register(self.id,typ=Ref(to=struct.type)) 
-            #
-            ## Allocate memory
-            #wr.emit(1, f'%{the_vector.value} = alloca {struct.type.str}')
-            #i8ptr = sc.symbol(typ=Ref(to=IntType(size=8))) # make i8 ptr for malloc
-            #wr.emit(1, f'%{i8ptr.value} = call i8* (i32) @malloc(i32 {arr_size})') 
-            #cast_result = sc.symbol(typ=the_vector.type.to.members[0])
-            #wr.emit(1, f'%{cast_result.value} = bitcast i8* %{i8ptr.value} to {cast_result.type.str}') # cast i8 ptr to i32 ptr
-            #
-            #vec_ptr = sc.symbol(typ=Ref(to=struct.type.members[0]))
-            #print("vec ptr", vec_ptr)
-            #print("arrptr", the_vector)
-            #acc_struct(the_vector, 0, wr, vec_ptr)
-            #wr.emit(1, f'store {cast_result.type.str} %{cast_result.value}, {vec_ptr.type.str} %{vec_ptr.value}' )
-#
-            ##TODO: Make into IR function:
-            #wr.emit(1, f'call void @llvm.memcpy.p0.p0.i32(ptr %{cast_result.value}, ptr %{value_result.value}, i32 {arr_size}, i1 false)')
-            #IRStructStore(the_vector, 1, Number(arr_size)).compile(wr, sc, dest)
-            #IRStructStore(the_vector, 2, Number(arr_size)).compile(wr, sc, dest)
+            #    if type(self.value) == Reference:
+            #        print("SELF.VALUE", self.value)
+            #        var_to_ref = sc.get(self.value.id) # Variable that shall be referenced
+            #        wr.emit(1, f'%{variable.value} = alloca {self.vartype.str}, align 8')
+            #        wr.emit(1, f'store {var_to_ref.type.str} %{var_to_ref.value}, {variable.type.str} %{variable.value}, align 8')          
+            #    #else:
+            #        #comp_err("Cannot assign something referende") # TODO: find out what is disallowed here
 
-
-        else:
-            # Compile what the variable is assigned to
-
-            variable = sc.register(self.id, typ=Ref(to=self.vartype))
-
-            # Just a regular variable
-            if self.vartype.ptr_depth() == 0:
-                value = sc.symbol(typ=self.vartype)
-                self.value.compile(wr, sc, value) 
-                wr.emit(1, f'%{variable.value} = alloca {self.vartype.str}, align 8')
-                wr.emit(1, f'store {value.type.str} %{value.value}, {variable.type.str} %{variable.value}, align 8')
-            else:
-                if type(self.value) == Reference:
-                    var_to_ref = sc.get(self.value.id.name) # Variable that shall be referenced
-                    wr.emit(1, f'%{variable.value} = alloca {self.vartype.str}, align 8')
-                    wr.emit(1, f'store {var_to_ref.type.str} %{var_to_ref.value}, {variable.type.str} %{variable.value}, align 8')          
-                else:
-                    print("ERR: Nothing else allowed here ")
-
-            print(f"assign {self.id}={variable}")
+            #print(f"[CMP][ASS] Assigned {self.id} to {variable}")
 
 
 @dataclass
 class Argument():
     value: ...
+
+@dataclass
+class NoOp():
+    
+    def compile(self, wr:Writer, sc:Scope, dest:Var):
+        pass
+
+@dataclass
+class WhileLoop():
+    cond: Expression
+    content: Block
+
+    #def cpv(self):
+    #    return self.if_true.cpv() and self.if_false.cpv()
+
+    def compile(self, wr:Writer, sc:Scope, dest:Var):
+        whilecond = sc.register('whilecond')
+        whilebody = sc.register('whilebody')
+        whileafter = sc.register('whileafter')
+
+        wr.emit(1, f'br label %{whilecond.value}')
+        
+        condresult = sc.register('whileres', IntType(1))
+        wr.emit(0, f'{whilecond.value}:')
+        self.cond.compile(wr, sc, condresult)
+        wr.emit(1, f'br i1 %{condresult.value}, label %{whilebody.value}, label %{whileafter.value}')
+        
+        wr.emit(0, f'{whilebody.value}:')
+        self.content.compile(wr, sc)
+        wr.emit(1, f'br label %{whilecond.value}')
+        
+        wr.emit(0, f'{whileafter.value}:')
+

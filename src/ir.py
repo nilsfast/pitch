@@ -25,9 +25,15 @@ class IRStore(IRBase):
     data: Var
 
     def compile(self, wr: Writer, sc: Scope):
-        wr.emit(1, f'store {self.data.type.str} %{self.data.value}, {self.var.type.str} %{self.var.value}')
-    
+        wr.emit(1, f'store {self.data.type.str} %{self.data.value}, {Ref(self.var.type).str} %{self.var.value}')
 
+@dataclass
+class IRLoad(IRBase):
+    var: Var
+    into: Var
+
+    def compile(self, wr: Writer, sc: Scope):
+        wr.emit(1, f'%{self.into.value} = load {self.into.type.str}, {Ref(self.var.type).str} %{self.var.value}, align 4')
 
 
 @dataclass
@@ -69,13 +75,6 @@ class IRArrayPtr(IRBase):
     def compile(self, wr: Writer, sc: Scope, dest: Var):
        
         wr.emit(1, f'%{dest.value} = getelementptr {dest.type.to.str}, {dest.type.str} %{self.array.value}, {self.index.type.str} %{self.index.value}')
-
-
-
-@dataclass
-class IRLoad(IRBase):
-    pass    
-    
 
 @dataclass
 class IRCall(IRBase):

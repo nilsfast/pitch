@@ -1,5 +1,7 @@
 import os
+from codegen import Module
 from parser import parser
+from error import comp_err, ice
 import sys
 import pprint
 from util.scope import Scope
@@ -31,19 +33,28 @@ define %pitch.res @pitch_ok(ptr %vptr) {
 """
 
 def main():
-    start = timer()
 
     #print(pathlib.Path(__file__).parent.resolve())
     outpath = os.path.normpath(os.getcwd())+os.sep+'build'+os.sep+'out.ll'
     filename = sys.argv[1]
 
-    pp = pprint.PrettyPrinter(indent=2)
+    pp = pprint.PrettyPrinter(indent=1)
 
     with open(filename, 'r') as f:
         input = f.read()
-        cst = parser.parse(input)
+        start = timer()
+        tree = parser.parse(input)
+        parser_end = timer()
         print("AST:")
-        pp.pprint(cst)
+        pp.pprint(tree)
+        
+        if not tree:
+            ice("Compilation failed during parsing")
+
+
+        #ast = tree.specify()
+        ast = tree
+        #pp.pprint(ast)
 
         print("Compiler output:")
         #res = cst.cpv()
@@ -51,20 +62,23 @@ def main():
         #    print("[CPV] Finished sucessfully.")
         #else:
         #    print("[CPV] Error during control path validation")
-        tt = TypeTable()
-        #cst.typecheck(tt)
-        print("\nType Table:")
-        print(pp.pprint(tt.table))
+        #tt = TypeTable()
+        ##cst.typecheck(tt)
+        #print("\nType Table:")
+        #print(pp.pprint(tt.table))
 
         code_writer = Writer()
         #w.emit_pre(STD_LIB)
         main_scope = Scope()
-        cst.compile(code_writer, main_scope)
+        ast.compile(code_writer, main_scope)
         end = timer()
-        print(f"[OUT][CMP] Finished in {(end-start)*1000:.2f}ms")
+        print(f"[BEN][PAR] Finished in {(parser_end-start)*1000:.2f}ms")
+        print(f"[BEN][CMP] Finished in {(end-parser_end)*1000:.2f}ms")
+        print(f"[BEN][TOT] Finished in {(end-start)*1000:.2f}ms")
+
 
         print("\nGenerated code:")
-        print('  '+str(code_writer).replace('\n', '\n  | '))
+        print('  '+str(code_writer))
         outf = open(outpath, "w")
         outf.write(str(code_writer))
         outf.close()
