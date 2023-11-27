@@ -1,0 +1,11 @@
+old
+.vscode
+**/__pycache__
+**/env
+*.out
+build/*
+misc
+parsetab.py
+*.code-workspace
+generated/*
+src/output/*
