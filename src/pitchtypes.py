@@ -1,5 +1,8 @@
 from abc import ABC, ABCMeta, abstractmethod
 
+from src import cgen
+from src.context import Context
+
 
 class UnknownType(object):
     def __repr__(self):
@@ -51,9 +54,11 @@ class UnresolvedType(TypeBase):
             return IntType(32)
         if self.name == "str":
             return LocalStringType(None)
+        else:
+            return UnresolvedType(self.name)
 
     def __repr__(self):
-        return f"T({self.name})"
+        return f"T_unres({self.name})"
 
     def to_c(self):
         raise Exception("Cannot convert unresolved type to C")
@@ -96,7 +101,7 @@ class LocalStringType(TypeBase):
         return f"_pt_str"
 
     def equal_to(self, other):
-        return type(other) == LocalStringType and self.size == other.size
+        return type(other) == LocalStringType
 
 
 class FunctionType(object):
@@ -127,3 +132,28 @@ def parse_type(_type: str):
         return IntType(32)
     else:
         raise Exception(f"Invalid type {_type}")
+
+
+class StructType(object):
+    def __init__(self, name, fields: dict[str, TypeBase]):
+        self.name = name
+        self.fields = fields
+
+    def __repr__(self):
+        return f"Struct({self.name}, {self.fields})"
+
+    def to_c(self):
+        return f"struct {self.name} {{\n{self.fields}\n}}"
+
+    def equal_to(self, other):
+        # return type(other) == StructTypes and self.name == other.name
+        return True
+
+    def has_member(self, member_name):
+        return member_name in self.fields
+
+    def get_member(self, member_name):
+        return self.fields[member_name]
+
+    def to_c(self):
+        return f"struct {self.name}"

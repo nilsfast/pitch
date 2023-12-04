@@ -21,10 +21,9 @@ class PitchParser(object):
 
     def p_top_level_def(self, t):
         '''
-        top_level_statement : def_statement
-                            | def_definition
-                            | function
+        top_level_statement : function
                             | statement
+                            | struct
         '''
         t[0] = t[1]
 
@@ -39,6 +38,30 @@ class PitchParser(object):
         else:
             t[0] = nodes.Function(id=t[2], params=t[4],
                                   return_type=t[6], block=t[7])
+
+    def p_struct_member(self, t):
+        '''
+        struct_member : ID COLON type SEMI
+        '''
+        t[0] = nodes.StructMember(id=t[1], type=t[3])
+
+    def p_struct_members(self, t):
+        '''
+        struct_members : struct_member
+                       | struct_members struct_member
+        '''
+        if len(t) == 2:
+            t[0] = [t[1]]
+        else:
+            t[1].append(t[2])
+            t[0] = t[1]
+
+    def p_struct(self, t):
+        '''
+        struct : STRUCT ID LBRACE struct_members RBRACE
+        '''
+        print("struct", t[4])
+        t[0] = nodes.Struct(id=t[2], members=t[4])
 
     def p_block(self, t):
         '''
@@ -100,6 +123,12 @@ class PitchParser(object):
         '''
         t[0] = nodes.Dereference(t[2])
 
+    def p_field_dereference(self, t):
+        '''
+        expression : expression FIELD_DEREFERENCE ID
+        '''
+        t[0] = nodes.FieldDereference(t[1], t[3])
+
     def p_return(self, t):
         '''
         statement : RETURN expression SEMI
@@ -157,7 +186,8 @@ class PitchParser(object):
         t[0] = nodes.CompCall(id=t[2], arguments=t[4])
 
     def p_error(self, t):
-        print(f"Syntax error at {t.value}")
+        print(f"Syntax error")
+        print(t.type, t.value, t.lineno, t.lexpos)
 
     def p_string(self, t):
         '''
@@ -208,11 +238,16 @@ class PitchParser(object):
         '''
         t[0] = UnresolvedType(t[1]).resolve()
 
-    def p_reference_type(self, t):
+    def p_ref_expression(self, t):
         '''
-        type : REF type
+        expression : REF ID
         '''
-        print("Reference 1 to ", t[2])
+        t[0] = nodes.Reference(t[1], t[3])
+
+    def p_type_ref(self, t):
+        '''
+        type : REF ID
+        '''
         t[0] = ReferenceType(t[2])
 
     def p_type_or_err(self, t):
@@ -220,6 +255,29 @@ class PitchParser(object):
         type : type QUESTIONMARK
         '''
         t[0] = MaybeType(ok_type=t[1])
+
+    def p_struct_inint_member(self, t):
+        '''
+        struct_init_member : ID COLON expression
+        '''
+        t[0] = nodes.StructInitMember(id=t[1], expression=t[3])
+
+    def p_struct_init_members(self, t):
+        '''
+        struct_init_members : struct_init_member
+                            | struct_init_members COMMA struct_init_member
+        '''
+        if len(t) == 2:
+            t[0] = [t[1]]
+        else:
+            print(t[0], t[1], t[3])
+            t[0] = t[1] + [t[3]]
+
+    def p_struct_init(self, t):
+        '''
+        expression : ID LBRACE struct_init_members RBRACE
+        '''
+        t[0] = nodes.StructInit(id=t[1], members=t[3])
 
     start = 'program'
 
@@ -229,14 +287,16 @@ class PitchParser(object):
         ('left', 'TIMES', 'DIVIDE'),
         ('nonassoc', 'LBRACE'),
         ('nonassoc', 'TIMES'),
+        ('nonassoc', 'REF'),
         ('nonassoc', 'AMPERSAND'),
+
 
 
     )
 
-    def __init__(self):
+    def __init__(self, outputdir="generated"):
         self.lexer = PitchLexer()
-        self.parser = yacc.yacc(module=self, outputdir="generated")
+        self.parser = yacc.yacc(module=self, outputdir=outputdir)
 
     def parse(self, data):
         return self.parser.parse(data, debug=False)

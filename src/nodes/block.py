@@ -1,6 +1,6 @@
 from src import cgen
-from src.nodes import Base
-from src.pitchtypes import FunctionType, TypeBase
+from src.nodes.utils import Base
+from src.pitchtypes import FunctionType, StructType,  TypeBase, UnresolvedType
 from src.error import throw_compiler_error
 from src.nodes.expressions import Expression
 from src.nodes.statements import StatementBase, StatementList
@@ -74,12 +74,11 @@ class Block(Base):
     def __repr__(self):
         return f'Block({repr(self.statement_list)}, ret={repr(self.returns)})'
 
-    def generate_c(self, writer, context):
-        # c_block = cgen.CBlock(root=root, parent=parent)
-        # for statement in self.statement_list.statements:
-        #    statement.generate_c(writer, context)
-        # return c_block
-        pass
+    def generate_c(self, writer: cgen.CWriter, context):
+        for statement in self.statement_list.statements:
+            statement.generate_c(writer, context)
+            print("statement", statement)
+        print(writer.statements)
 
     def check_references(self, context):
         self.statement_list.check_references(context)
@@ -100,7 +99,7 @@ class NamedBlock(Base):
         return self.block.find(id)
 
     def generate_c(self, writer, context):
-        return self.block.generate_c(writer, context)
+        self.block.generate_c(writer, context)
 
 
 class Function(Base):
@@ -112,6 +111,8 @@ class Function(Base):
         self.block: Block = block
         self.scope = None
         self.return_types = []
+        if not self.params:
+            self.params = ParameterList([])
 
     def __repr__(self):
         return f'Function(id={repr(self.id)}, ret={repr(self.return_type)}, params={repr(self.params)}, block={repr(self.block)})'
@@ -124,6 +125,9 @@ class Function(Base):
 
         if self.params:
             param_types = [param.type for param in self.params.parameters]
+
+        # TODO determine return types first
+        # TODO check if the types are recurisve
 
         scope.add(self.id, FunctionType(
             self.return_type, param_types if self.params else []))
@@ -141,6 +145,7 @@ class Function(Base):
                 f'Function "{self.id}" does not return anything')
 
         # Check if all possible returnt types are the same
+
         if len(set(self.return_types)) > 1:
             throw_compiler_error(
                 f'Function "{self.id}" has multiple return types')
@@ -148,19 +153,24 @@ class Function(Base):
         if not self.return_type.equal_to(self.return_types[0]):
             throw_compiler_error(
                 f'Function "{self.id}" has return type {self.return_types[0]}, but declared as {self.return_type}')
+        self.return_type = self.return_types[0]
+        printlog(f"Done with function {self.id}, return type {
+                 self.return_type} {self.return_types}")
 
-        printlog(f"Done with function {self.id}")
+    def generate_c(self, top_level_writer: cgen.CWriter, context) -> cgen.CFunction:
+        print("C ing function")
+        # Maybe make a function writer and let the function arguments do stuff in the body
+        c_function = cgen.CFunction(
+            name=self.id, return_type=self.return_type.to_c(), args=self.params.generate_c(top_level_writer, context), root=None, parent=None
+        )
+        function_writer = cgen.CWriter(top_level_writer)
 
-    def generate_c(self, writer, context):
-        #  params_as_c = "void"
-        # if self.params:
-        #     args_as_c = self.params.generate_c(None, None)
-        # c_function = cgen.CFunction(
-        #     name=self.id, return_type=self.return_type.to_c(), args=params_as_c, root=root, parent=parent
-        # )
-        # c_function.body = self.block.generate_c(writer, context)
-        # return c_function
-        pass
+        self.block.generate_c(function_writer, context)
+
+        c_function.body.statements = function_writer.export()
+
+        top_level_writer.append(c_function)
+        print("writer", function_writer.statements)
 
     def check_references(self, context):
         self.block.check_references(context)
@@ -188,3 +198,49 @@ class If(StatementBase):
 
     def check_references(self, context):
         print("checking referencess...")
+
+
+class StructMember(Base):
+    def __init__(self, type: str, id: str):
+        print(id,  type)
+        self.type: TypeBase = type
+        self.id = id
+
+    def compute_type(self, scope: Scope):
+        if isinstance(self.type, UnresolvedType):
+            type = scope.find(self.type.name)
+            if not type:
+                throw_compiler_error(
+                    f'Could not resolve type {self.type.id}')
+            self.type = type.type
+
+        return self.type
+
+    def __repr__(self):
+        return f'{self.id=}: {self.type=}'
+
+
+class Struct(Base):
+    def __init__(self, id: str, members):
+        self.id = id
+        self.member_list: list[StructMember] = members
+
+    def __repr__(self):
+        return f'Struct({self.id}, {self.member_list})'
+
+    def populate_scope(self, scope: Scope):
+
+        print("POPULATE SCOPE STRUCT")
+        print(self.member_list)
+        member_types = {}
+        for member in self.member_list:
+            member_types[member.id] = member.compute_type(scope)
+        struct_type = StructType(self.id, member_types)
+        scope.add(self.id, struct_type)
+        print("struct type", struct_type)
+
+    def generate_c(self, top_level_writer: cgen.CWriter, context):
+        member_list_c = "\n    ".join(
+            [f'{member.type.to_c()} {member.id};' for member in self.member_list])
+        top_level_writer.append_statement(
+            f'struct {self.id} {{\n    {member_list_c}\n}};')

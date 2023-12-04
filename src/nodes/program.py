@@ -1,6 +1,7 @@
 
 from src import cgen
-from src.nodes import Base
+from src.context import Context
+from src.nodes.utils import Base
 from src.nodes.block import Function
 from src.nodes.preprocessor import PreprocessorBase
 from src.scope import Scope
@@ -26,21 +27,25 @@ class Program(Base):
         for statement in self.statements:
             if isinstance(statement, PreprocessorBase):
                 statement.preprocess(definitions)
-            else:
+            elif isinstance(statement, Function):
                 self.functions.append(statement)
 
     def populate_scope(self):
         assert (len(self.functions) > 0)
         self.scope = Scope("__program__")
-        for function in self.functions:
-            function.populate_scope(self.scope)
+        for stm in self.statements:
+            stm.populate_scope(self.scope)
 
     def generate_c(self):
         top_level = cgen.CProgram()
-        writer = cgen.CWriter()
-        for function in self.functions:
-            function.generate_c(writer, {})
-        writer.push_imports(top_level)
+        top_level_writer = cgen.CWriter()
+        context = Context()
+        for statement in self.statements:
+            statement.generate_c(top_level_writer, context)
+
+        top_level.set_statement(top_level_writer.export())
+
+        return top_level
 
     def check_references(self, context):
         for function in self.functions:

@@ -16,7 +16,9 @@ print(args.debug)
 current_directory = os.getcwd()
 source_path = os.path.join(current_directory, args.source)
 print(source_path)
+output_path = os.path.join(current_directory, "out")
 
 # source_path, debug=args.debug
-compiler = PitchCompiler()
+compiler = PitchCompiler(source_file=source_path,
+                         out_path=output_path, debug=args.debug)
 compiler.compile()

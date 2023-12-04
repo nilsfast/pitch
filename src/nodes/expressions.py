@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod, abstractproperty
-from src.context import ContextVar
+from src.context import Context, ContextVar
 from src.error import throw_compiler_error
-from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TypeBase, UnknownType, parse_type
+from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, StructType, TypeBase, UnknownType, parse_type
 from src.scope import Scope, ScopeEntry
 import src.cgen as cgen
 from src.nodes.utils import printlog, Base
@@ -13,7 +13,7 @@ class ExpressionBase(Base):
         pass
 
     @abstractmethod
-    def generate_c(self, writer: cgen.CWriter, context) -> str:
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None) -> str:
         pass
 
 
@@ -32,7 +32,7 @@ class Expression(ExpressionBase):
         self.t = self.left.compute_type(scope)
         return self.t
 
-    def generate_c(self, writer, context):
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'{self.left.generate_c(writer, context)} {self.operator} {self.right.generate_c(writer, context)}'
 
 
@@ -48,7 +48,7 @@ class Group(Expression):
         self.t = self.expression.compute_type(scope)
         return self.t
 
-    def generate_c(self, writer, context):
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'({self.expression.generate_c(writer, context)})'
 
 
@@ -65,14 +65,14 @@ class Integer(ExpressionBase):
         self.t = IntType(self.size)
         return self.t
 
-    def generate_c(self, writer, context):
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return str(self.value)
 
 
 class String(ExpressionBase):
     def __init__(self, value: str):
         self.value = value.replace('"', '')
-        self.t: TypeBase = None
+        self.t: LocalStringType = None
 
     def __repr__(self):
         return f'String(value={self.value})'
@@ -81,9 +81,11 @@ class String(ExpressionBase):
         self.t = LocalStringType(len(self.value))
         return self.t
 
-    def generate_c(self, writer, context):
-        chars = self.value
-        return "{"+",".join([f'"{char}"' for char in chars])+"}"
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
+        writer.append_statement(f"// {role}")
+        # Add factory
+        # return self.t.generate_c_static(self.value, )
+        return cgen.PitchString(self.value, self.t.size).to_const(writer, context)
 
 
 class Identifier(ExpressionBase):
@@ -101,7 +103,7 @@ class Identifier(ExpressionBase):
         self.t = scope.find(self.id).type
         return self.t
 
-    def generate_c(self, writer, context):
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return self.id
 
 
@@ -120,8 +122,8 @@ class Reference(ExpressionBase):
             throw_compiler_error("Cannot reference expression")
         return self.t
 
-    def generate_c(self, parent, root, statement=None):
-        return f'&{self.id.generate_c(parent, root)}'
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
+        return f'&{self.id.generate_c(writer, context)}'
 
 
 class Dereference(ExpressionBase):
@@ -140,5 +142,83 @@ class Dereference(ExpressionBase):
         self.t = id_type.to
         return self.t
 
-    def generate_c(self, parent, root, statement=None):
-        return f'*{self.id.generate_c(parent, root)}'
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
+        return f'*{self.id.generate_c(writer, context)}'
+
+
+class FieldDereference(ExpressionBase):
+    def __init__(self, expression: ExpressionBase, field: str):
+        self.expression = expression
+        self.field = field
+        self.t: TypeBase = None
+
+    def __repr__(self):
+        return f'FieldDereference({self.expression}, {self.field})'
+
+    def compute_type(self, scope):
+        ref_struct_type = self.expression.compute_type(scope)
+
+        assert (isinstance(ref_struct_type, ReferenceType))
+
+        struct_type: StructType = ref_struct_type.to
+        print("Struct type", struct_type)
+
+        if not isinstance(struct_type, StructType):
+            throw_compiler_error(
+                f'Cannot dereference non-struct type {struct_type}')
+
+        if not struct_type.has_member(self.field):
+            throw_compiler_error(
+                f'Struct "{struct_type.id}" does not have member "{self.field}"')
+
+        field_type = struct_type.get_member(self.field)
+
+        self.t = field_type
+        return self.t
+
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
+        return f'{self.expression.generate_c(writer, context)}->{self.field}'
+
+
+class StructInitMember(ExpressionBase):
+    def __init__(self, id: str, expression: ExpressionBase):
+        self.id = id
+        self.value = expression
+        self.t: TypeBase = None
+
+    def __repr__(self):
+        return f'StructInitMember({self.id}, {self.value})'
+
+    def compute_type(self, scope):
+        pass
+
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
+        pass
+
+
+class StructInit(ExpressionBase):
+    def __init__(self, id: str, members: list):
+        self.id = id
+        self.members = members
+        self.t: TypeBase = None
+
+    def __repr__(self):
+        return f'StructInitializer({self.id}, {self.members})'
+
+    def compute_type(self, scope: Scope):
+
+        for memeber in self.members:
+            memeber.value.compute_type(scope)
+
+        struct_init_type = scope.find(self.id)
+        if not struct_init_type:
+            throw_compiler_error(f'Identifier "{self.id}" not found')
+        self.t = struct_init_type.type
+        return self.t
+
+    def generate_c(self, writer: cgen.CWriter, context: Context, role=None) -> str:
+        struct_member_c = []
+        for member in self.members:
+            struct_member_c.append(
+                f'.{member.id}={member.value.generate_c(writer, context, role="struct.init")}')
+        return f"(struct {self.id}){{ {", ".join(struct_member_c)} }}"

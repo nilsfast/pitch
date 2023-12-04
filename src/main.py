@@ -1,4 +1,6 @@
 
+import os
+from src.error import throw_compiler_error
 from src.pitchparser import PitchParser
 from src.nodes.program import Program
 from prettyprinter import pprint
@@ -9,19 +11,36 @@ logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
 
 
 class PitchCompiler():
-    def __init__(self):
-        pass
+    def __init__(self, source_file: str = None, out_path=None, debug=False):
+        self.debug = debug
+        self.source_file = source_file
+        self.out_dir = out_path
 
     def compile(self):
+
+        if self.source_file is None:
+            throw_compiler_error("No source file specified")
+
+        source = ""
+
+        with open(self.source_file, "r") as f:
+            source = f.read()
+            f.close()
+
         test_code = """
-        fn main () i32 {
-            let a = "hallo";
-            let b: i32 = 1;
+        
+        struct Point {
+            x: i32;
+            y: i32;
+        }
+
+        fn main() i32 {
+            let x = Point { x: 1, y: 2};
             return 0;
         }
         """
-        parser = PitchParser()
-        parse_tree: Program = parser.parse(test_code)
+        parser = PitchParser(self.out_dir)
+        parse_tree: Program = parser.parse(source)
         pprint(parse_tree)
         # print("RECURSIVE?", pprint.isrecursive(parse_tree))
 
@@ -48,8 +67,9 @@ class PitchCompiler():
         print("")
         c_tree = parse_tree.generate_c()
         print(c_tree)
-        print("")
-        print(c_tree.to_string())
+        print("C PROGRAM:")
+        c = c_tree.to_string()
+        print(c)
 
         assert (c_tree is not None)
         # assert (type(c_tree) == cgen.CProgram)
@@ -57,5 +77,10 @@ class PitchCompiler():
         # c = parse_tree.to_c()
         # print(c)
 
-        # with open("out.c", "w") as f:
-        #    f.write(c)
+        if not os.path.isdir(self.out_dir):
+            os.makedirs(self.out_dir)
+
+        c_file_out = os.path.join(self.out_dir, "out.c")
+
+        with open(c_file_out, "w") as f:
+            f.write(c)

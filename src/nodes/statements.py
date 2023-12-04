@@ -1,11 +1,10 @@
-from abc import abstractmethod, abstractproperty
+from abc import abstractmethod
 from src.context import ContextVar
 from src.error import throw_compiler_error
 from src.nodes.expressions import Expression, ExpressionBase
 from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TypeBase, UnknownType, parse_type
-from src.scope import Scope, ScopeEntry
+from src.scope import Scope
 import src.cgen as cgen
-import logging
 from src.nodes.utils import printlog, Base
 
 
@@ -93,7 +92,7 @@ class Return(StatementBase):
 
     def generate_c(self, writer, context):
         writer.append_statement(
-            f'return {self.expression.generate_c(writer, context)};')
+            f'return {self.expression.generate_c(writer, context, "return")};')
 
     def check_references(self, context):
         print("return issue")
@@ -125,20 +124,13 @@ class Assignment(StatementBase):
         scope.add(self.id, expression_type)
         return expression_type
 
-    def generate_c(self, writer, context):
+    def generate_c(self, writer: cgen.CWriter, context):
+
         printlog("Generating c for assignment",
                  self.id, self.t, writer, context)
-        """
-        if isinstance(self.t, LocalStringType):
-            parent.append(cgen.CStatement(
-                f'_pt_str* {self.id} = _pt_init_str({self.t.size});'))
-            parent.append(cgen.CStatement(f"char[{self.t.size}] {self.id}_loc = {
-                          self.expression.generate_c(parent, root)}"))
-            return cgen.CStatement(f"strcpy (&{self.id}_loc, {self.id});")
-        else:
-            return cgen.CStatement(data=f'{self.t.to_c()} {self.id} = {self.expression.generate_c(parent, root, self)};')
-        """
-        pass
+
+        writer.append_statement(data=f'{self.t.to_c()} {self.id} = {
+            self.expression.generate_c(writer, context, "assignment")};')
 
     def check_references(self, context):
         context.add(self.id, ContextVar(liveness=0, scope="local"))
@@ -167,7 +159,7 @@ class Reassignment(StatementBase):
                 f'Identifier "{self.id}" type does not match expression type')
 
     def generate_c(self, writer, context):
-        return cgen.CStatement(data=f'{self.id} = {self.expression.generate_c(writer, context)};')
+        return cgen.CStatement(data=f'{self.id} = {self.expression.generate_c(writer, context, "reassignment")};')
 
     def check_references(self, context):
         print("checking referencess...")
@@ -213,7 +205,7 @@ class Call(ExpressionBase):
             raise Exception(f'Function "{self.id}" not found')
 
         self.t = scope.find(self.id).type
-        printlog("Call return type", self.t.return_type)
+        printlog("Call return type", self.t)
 
         return self.t.return_type
 

@@ -7,5 +7,4 @@ build/*
 misc
 parsetab.py
 *.code-workspace
-generated/*
-src/output/*
+**/out

@@ -24,6 +24,8 @@ class PitchLexer(object):
         'QUESTIONMARK',
         'EXCLAMATIONMARK',
         'AMPERSAND',
+        'DEREFERENCE',
+        'FIELD_DEREFERENCE',
     ]
 
     # Reserved words
@@ -66,6 +68,8 @@ class PitchLexer(object):
     t_QUESTIONMARK = r'\?'
     t_EXCLAMATIONMARK = r'!'
     t_AMPERSAND = r'&'
+    t_DEREFERENCE = r'\*'
+    t_FIELD_DEREFERENCE = r'\-\>'
 
     # A regular expression rule with some action code
     # Note addition of self parameter since we're in a class

@@ -1,13 +1,7 @@
 import logging
-from abc import ABC, abstractmethod
 
-
-def printlog(*args):
-    logging.info(" ".join([str(arg) for arg in args]))
-
-
-class Base(ABC):
-    pass
-
-    def __format__(self, format_spec):
-        return self.__repr__()
+from src.nodes.block import *
+from src.nodes.expressions import *
+from src.nodes.preprocessor import *
+from src.nodes.program import *
+from src.nodes.statements import *
