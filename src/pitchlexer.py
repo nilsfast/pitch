@@ -1,5 +1,7 @@
 import ply.lex as lex
 
+from src.nodes.utils import printlog
+
 
 class PitchLexer(object):
     tokens = [

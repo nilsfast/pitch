@@ -110,3 +110,5 @@ fn insert(arena: Arena, node: &Node, value: i32) {
     node.next = new_node;
 }
 ```
+
+The `new_node` is now allocated in the `arena` arena.
