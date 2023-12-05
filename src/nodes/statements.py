@@ -2,7 +2,7 @@ from abc import abstractmethod
 from src.context import ContextVar
 from src.error import throw_compiler_error
 from src.nodes.expressions import Expression, ExpressionBase
-from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TypeBase, UnknownType, parse_type
+from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TypeBase, UnknownType, UnresolvedType,  resolve_with_scope
 from src.scope import Scope
 import src.cgen as cgen
 from src.nodes.utils import printlog, Base
@@ -30,13 +30,18 @@ class ExpressionStatement(StatementBase):
         return f'ExprStmt(expr={self.expression})'
 
     def populate_scope(self, scope: Scope, block):
-        self.expression.compute_type(scope, block)
+        printlog("GOT EXPRESSION STATEMENT", self.expression)
+        self.expression.compute_type(scope)
 
     def to_c(self):
         return f'{self.expression.to_c()};'
 
     def check_references(self, context):
-        print("checking referencess...")
+        printlog("checking referencess...")
+
+    def generate_c(self, writer: cgen.CWriter, context):
+        writer.append(cgen.CStatement(
+            data=f'{self.expression.generate_c(writer, context)};'))
 
 
 class StatementList(Base):
@@ -68,9 +73,9 @@ class StatementList(Base):
 
     def check_references(self, context):
         for statement in self.statements:
-            print("ctx", context)
+            printlog("ctx", context)
             statement.check_references(context)
-        print("ctx", context)
+        printlog("ctx", context)
 
 
 class Return(StatementBase):
@@ -95,7 +100,7 @@ class Return(StatementBase):
             f'return {self.expression.generate_c(writer, context, "return")};')
 
     def check_references(self, context):
-        print("return issue")
+        printlog("return issue")
 
 
 class Assignment(StatementBase):
@@ -111,6 +116,7 @@ class Assignment(StatementBase):
     def populate_scope(self, scope: Scope, block):
         expression_type = self.expression.compute_type(scope)
         # check types.
+        self.t = resolve_with_scope(self.t, scope)
 
         if isinstance(self.t, UnknownType):
             printlog("inferred type for", self.id, "as", expression_type)
@@ -130,13 +136,79 @@ class Assignment(StatementBase):
                  self.id, self.t, writer, context)
 
         writer.append_statement(data=f'{self.t.to_c()} {self.id} = {
-            self.expression.generate_c(writer, context, "assignment")};')
+            self.expression.generate_c(writer, context)};')
 
     def check_references(self, context):
         context.add(self.id, ContextVar(liveness=0, scope="local"))
-        print("checking referencess...")
+        printlog("checking referencess...")
 
 
+"""
+class FieldAssignment(StatementBase):
+    def __init__(self, id: str, field: str, expression: Expression):
+        self.id = id
+        self.field = field
+        self.t: TypeBase = None  # TODO rename var type
+        self.expression = expression
+
+    def __repr__(self):
+        return f'FAss(id={self.id}, t={self.t}, {self.expression})'
+
+    def populate_scope(self, scope: Scope, block):
+        expression_type = self.expression.compute_type(scope)
+        # self.t = scope.find(self.id).type
+        printlog("FAss", self.t, expression_type)
+        # check types
+
+        if isinstance(self.t, UnknownType):
+            printlog("inferred type for", self.id, "as", expression_type)
+            self.t = expression_type
+        # elif not self.t.equal_to(expression_type):
+        #    throw_compiler_error(
+        #        f'Field type {self.id}:{self.t} type does not match expression type')
+        return expression_type
+
+    def generate_c(self, writer: cgen.CWriter, context):
+
+        writer.append_statement(data=f'{self.id}->{self.field} = {
+            self.expression.generate_c(writer, context)};')
+
+    def check_references(self, context):
+        context.add(self.id, ContextVar(liveness=0, scope="local"))
+        printlog("checking referencess...")
+"""
+
+
+class Reassignment(StatementBase):
+    def __init__(self, lexpr: Expression, rexpr: Expression) -> None:
+        self.lexpr = lexpr
+        self.rexpr = rexpr
+        self.t: TypeBase = None
+
+    def __repr__(self):
+        return f'Reassignment({self.lexpr}, {self.rexpr})'
+
+    def populate_scope(self, scope: Scope, block):
+        lexpr_type = self.lexpr.compute_type(scope)
+        rexpr_type = self.rexpr.compute_type(scope)
+
+        if self.lexpr.evaluates_to() == "value":
+            throw_compiler_error(
+                f'Reassignment left hand side must not be a value, idiot. Left hand side is {self.lexpr}')
+
+        if not lexpr_type.equal_to(rexpr_type):
+            throw_compiler_error(
+                f'Reassignment types do not match. You dummy tried to assign a {rexpr_type} to a {lexpr_type}')
+
+    def generate_c(self, writer: cgen.CWriter, context):
+        writer.append(cgen.CStatement(f'{self.lexpr.generate_c(writer, context)} = {
+                      self.rexpr.generate_c(writer, context)};'))
+
+    def check_references(self, context):
+        pass
+
+
+"""
 class Reassignment(StatementBase):
     def __init__(self, id: str, expression: Expression):
         self.id = id
@@ -162,7 +234,8 @@ class Reassignment(StatementBase):
         return cgen.CStatement(data=f'{self.id} = {self.expression.generate_c(writer, context, "reassignment")};')
 
     def check_references(self, context):
-        print("checking referencess...")
+        printlog("checking referencess...")
+"""
 
 
 class ArgumentList():
@@ -201,8 +274,17 @@ class Call(ExpressionBase):
         printlog("Call with arg types", arg_types)
         # Return type
         # Look for own type signature in scope
+
+        if self.id == "alloc":
+            type_name = self.args.expressions[0].id
+            type_obj = resolve_with_scope(UnresolvedType(type_name), scope)
+            self.t = ReferenceType(type_obj, scope="heap")
+            printlog("Alloc type", self.t)
+            return self.t
+
         if not scope.find(self.id):
-            raise Exception(f'Function "{self.id}" not found')
+            throw_compiler_error(
+                f'Function "{self.id}" not found. Did you forget to declare it?')
 
         self.t = scope.find(self.id).type
         printlog("Call return type", self.t)
@@ -210,8 +292,13 @@ class Call(ExpressionBase):
         return self.t.return_type
 
     def generate_c(self, writer, context):
+        if self.id == "alloc":
+            return f'malloc((size_t) {self.args.expressions[1].generate_c(writer, context)} * sizeof({self.t.to.to_c()}))'
         if self.args:
-            print("function has args, passing those")
+            printlog("function has args, passing those")
             return f'{self.id}({self.args.generate_c(writer, context)})'
         else:
             return f'{self.id}(void)'
+
+    def evaluates_to(self):
+        return "value"

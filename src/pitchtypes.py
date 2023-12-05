@@ -1,7 +1,24 @@
 from abc import ABC, ABCMeta, abstractmethod
+import re
 
 from src import cgen
 from src.context import Context
+from src.error import throw_compiler_error
+from src.nodes.utils import printlog
+
+
+def resolve_with_scope(type, scope):
+    if isinstance(type, UnresolvedType):
+        type = scope.find(type.name)
+        if not type:
+            throw_compiler_error(f'Could not resolve type {
+                                 type.name}. Did you forget to declare it?')
+        type = type.type
+
+    if isinstance(type, ReferenceType):
+        type.to = resolve_with_scope(type.to, scope)
+
+    return type
 
 
 class UnknownType(object):
@@ -23,7 +40,7 @@ class ReferenceType(object):
 
     def equal_to(self, other):
         if not self.to or not other.to:
-            raise Exception("Hey stupid, you have a reference to nothing")
+            throw_compiler_error("Hey stupid, you have a reference to nothing")
         return type(other) == ReferenceType and self.to.equal_to(other.to)
 
 
@@ -42,7 +59,7 @@ class TypeBase(ABC):
 
     @abstractmethod
     def equal_to(self, other):
-        raise Exception("Unimplemented Equal to")
+        throw_compiler_error("Unimplemented equal to")
 
 
 class UnresolvedType(TypeBase):
@@ -50,10 +67,15 @@ class UnresolvedType(TypeBase):
         self.name = name
 
     def resolve(self):
-        if self.name == "i32":
-            return IntType(32)
+
+        if re.match(r"i\d+", self.name):
+            return IntType(int(self.name[1:]))
+        if re.match(r"u\d+", self.name):
+            return UnsigendIntType(int(self.name[1:]))
         if self.name == "str":
             return LocalStringType(None)
+        if self.name == "void":
+            return VoidType()
         else:
             return UnresolvedType(self.name)
 
@@ -61,10 +83,10 @@ class UnresolvedType(TypeBase):
         return f"T_unres({self.name})"
 
     def to_c(self):
-        raise Exception("Cannot convert unresolved type to C")
+        throw_compiler_error("Cannot convert unresolved type to C")
 
     def equal_to(self, other):
-        raise Exception("Cannot compare unresolved type")
+        throw_compiler_error("Cannot compare unresolved type")
 
 
 class IntType(object):
@@ -76,15 +98,38 @@ class IntType(object):
 
     def to_c(self):
         if self.size == 8:
-            return "char"
+            return "int8_t"
         elif self.size == 16:
-            return "short"
+            return "int16_t"
         elif self.size == 32:
-            return "int"
+            return "int32_t"
         elif self.size == 64:
-            return "long"
+            return "int64_t"
         else:
-            raise Exception("Invalid int size")
+            throw_compiler_error("Invalid int size, must be 8, 16, 32 or 64")
+
+    def equal_to(self, other):
+        return type(other) == IntType and self.size == other.size
+
+
+class UnsigendIntType(object):
+    def __init__(self, size):
+        self.size = size
+
+    def __repr__(self):
+        return f"T(u{self.size})"
+
+    def to_c(self):
+        if self.size == 8:
+            return "uint8_t"
+        elif self.size == 16:
+            return "uint16_t"
+        elif self.size == 32:
+            return "uint32_t"
+        elif self.size == 64:
+            return "uint64_t"
+        else:
+            throw_compiler_error("Invalid uint size, must be 8, 16, 32 or 64")
 
     def equal_to(self, other):
         return type(other) == IntType and self.size == other.size
@@ -110,7 +155,7 @@ class FunctionType(object):
         self.params = params
 
     def __repr__(self):
-        print("params are", self.params)
+        printlog("params are", self.params)
         return f"({",".join([param.__repr__() for param in self.params])}) -> {self.return_type}"
 
     def equal_to(self, other):
@@ -124,14 +169,6 @@ class FunctionType(object):
             if not self.params[i].equal_to(other.params[i]):
                 return False
         return True
-
-
-def parse_type(_type: str):
-    print("parsing type ", _type, type(_type))
-    if _type == "i32":
-        return IntType(32)
-    else:
-        raise Exception(f"Invalid type {_type}")
 
 
 class StructType(object):
@@ -157,3 +194,14 @@ class StructType(object):
 
     def to_c(self):
         return f"struct {self.name}"
+
+
+class VoidType(object):
+    def __repr__(self):
+        return "T(void)"
+
+    def to_c(self):
+        return "void"
+
+    def equal_to(self, other):
+        return type(other) == VoidType

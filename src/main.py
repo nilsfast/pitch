@@ -1,6 +1,7 @@
 
 import os
-from src.error import throw_compiler_error
+from src.error import print_success, throw_compiler_error
+from src.nodes.utils import printlog
 from src.pitchparser import PitchParser
 from src.nodes.program import Program
 from prettyprinter import pprint
@@ -27,33 +28,20 @@ class PitchCompiler():
             source = f.read()
             f.close()
 
-        test_code = """
-        
-        struct Point {
-            x: i32;
-            y: i32;
-        }
-
-        fn main() i32 {
-            let x = Point { x: 1, y: 2};
-            return 0;
-        }
-        """
         parser = PitchParser(self.out_dir)
         parse_tree: Program = parser.parse(source)
-        pprint(parse_tree)
-        # print("RECURSIVE?", pprint.isrecursive(parse_tree))
+        # printlog("RECURSIVE?", pprint.isrecursive(parse_tree))
 
-        try:
-            assert (parse_tree is not None)
-        except AssertionError:
-            print("Parse tree is None")
+        if not parse_tree:
+            throw_compiler_error("No parse tree generated")
+        else:
+            print_success("Parse tree generated")
 
         definitions = {}
 
         parse_tree.preprocess(definitions)
 
-        print("Defs", definitions)
+        printlog("Defs", definitions)
 
         parse_tree.populate_scope()
 
@@ -63,19 +51,21 @@ class PitchCompiler():
         context = Context()
         parse_tree.check_references(context)
 
-        pprint(parse_tree, indent=4)
-        print("")
+        printlog(parse_tree)
+        printlog("")
         c_tree = parse_tree.generate_c()
-        print(c_tree)
-        print("C PROGRAM:")
+        if not c_tree:
+            throw_compiler_error("No C tree generated")
+        else:
+            print_success("\nC tree generated\n")
         c = c_tree.to_string()
-        print(c)
+        printlog(c)
 
         assert (c_tree is not None)
         # assert (type(c_tree) == cgen.CProgram)
 
         # c = parse_tree.to_c()
-        # print(c)
+        # printlog(c)
 
         if not os.path.isdir(self.out_dir):
             os.makedirs(self.out_dir)

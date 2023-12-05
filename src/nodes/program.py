@@ -40,6 +40,10 @@ class Program(Base):
         top_level = cgen.CProgram()
         top_level_writer = cgen.CWriter()
         context = Context()
+        top_level_writer.add_import("stdio.h")
+        top_level_writer.add_import("stdint.h")
+        top_level_writer.add_import("stdbool.h")
+
         for statement in self.statements:
             statement.generate_c(top_level_writer, context)
 
