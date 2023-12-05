@@ -14,7 +14,7 @@ class CProgram():
         return self
 
     def to_string(self, level=0):
-        # print("program to string called", self._children)
+        # printlog("program to string called", self._children)
         return '\n\n'.join([child.to_string() for child in self._children])
 
 
@@ -53,7 +53,7 @@ class CFunction():
         return self
 
     def to_string(self, level=0) -> str:
-        # print("c func to string called", self.body, self.body._statements)
+        # printlog("c func to string called", self.body, self.body._statements)
         return f'{self.return_type} {self.name}({self.args}) {{\n{self.body.to_string(level=level+1)}\n}}'
 
 

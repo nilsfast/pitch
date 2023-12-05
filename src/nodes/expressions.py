@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod, abstractproperty
 from src.context import Context, ContextVar
 from src.error import throw_compiler_error
-from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, StructType, TypeBase, UnknownType, parse_type
+from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, StructType, TypeBase, UnknownType
 from src.scope import Scope, ScopeEntry
 import src.cgen as cgen
 from src.nodes.utils import printlog, Base
@@ -14,6 +14,10 @@ class ExpressionBase(Base):
 
     @abstractmethod
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None) -> str:
+        pass
+
+    @abstractmethod
+    def evaluates_to(self):
         pass
 
 
@@ -35,6 +39,9 @@ class Expression(ExpressionBase):
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'{self.left.generate_c(writer, context)} {self.operator} {self.right.generate_c(writer, context)}'
 
+    def evaluates_to(self):
+        return "value"
+
 
 class Group(Expression):
     def __init__(self, expression: ExpressionBase):
@@ -50,6 +57,9 @@ class Group(Expression):
 
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'({self.expression.generate_c(writer, context)})'
+
+    def evaluates_to(self):
+        return self.expression.evaluates_to()
 
 
 class Integer(ExpressionBase):
@@ -67,6 +77,9 @@ class Integer(ExpressionBase):
 
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return str(self.value)
+
+    def evaluates_to(self):
+        return "value"
 
 
 class String(ExpressionBase):
@@ -87,6 +100,9 @@ class String(ExpressionBase):
         # return self.t.generate_c_static(self.value, )
         return cgen.PitchString(self.value, self.t.size).to_const(writer, context)
 
+    def evaluates_to(self):
+        return "value"
+
 
 class Identifier(ExpressionBase):
 
@@ -106,6 +122,9 @@ class Identifier(ExpressionBase):
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return self.id
 
+    def evaluates_to(self):
+        return "identifier"
+
 
 class Reference(ExpressionBase):
     def __init__(self, id: str):
@@ -124,6 +143,9 @@ class Reference(ExpressionBase):
 
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'&{self.id.generate_c(writer, context)}'
+
+    def evaluates_to(self):
+        return "reference"
 
 
 class Dereference(ExpressionBase):
@@ -145,6 +167,9 @@ class Dereference(ExpressionBase):
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'*{self.id.generate_c(writer, context)}'
 
+    def evaluates_to(self):
+        return "identifier"
+
 
 class FieldDereference(ExpressionBase):
     def __init__(self, expression: ExpressionBase, field: str):
@@ -157,11 +182,14 @@ class FieldDereference(ExpressionBase):
 
     def compute_type(self, scope):
         ref_struct_type = self.expression.compute_type(scope)
+        printlog("Ref struct type", ref_struct_type)
 
-        assert (isinstance(ref_struct_type, ReferenceType))
+        if not isinstance(ref_struct_type, ReferenceType):
+            throw_compiler_error(
+                f'Cannot dereference non-reference type {ref_struct_type}')
 
         struct_type: StructType = ref_struct_type.to
-        print("Struct type", struct_type)
+        printlog("Struct type", struct_type)
 
         if not isinstance(struct_type, StructType):
             throw_compiler_error(
@@ -179,6 +207,9 @@ class FieldDereference(ExpressionBase):
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         return f'{self.expression.generate_c(writer, context)}->{self.field}'
 
+    def evaluates_to(self):
+        return "identifier"
+
 
 class StructInitMember(ExpressionBase):
     def __init__(self, id: str, expression: ExpressionBase):
@@ -194,6 +225,9 @@ class StructInitMember(ExpressionBase):
 
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None):
         pass
+
+    def evaluates_to(self):
+        return "identifier"
 
 
 class StructInit(ExpressionBase):
@@ -222,3 +256,6 @@ class StructInit(ExpressionBase):
             struct_member_c.append(
                 f'.{member.id}={member.value.generate_c(writer, context, role="struct.init")}')
         return f"(struct {self.id}){{ {", ".join(struct_member_c)} }}"
+
+    def evaluates_to(self):
+        return "identifier"

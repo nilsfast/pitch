@@ -1,5 +1,6 @@
 import ply.yacc as yacc
 import src.nodes as nodes
+from src.nodes.utils import printlog
 from src.pitchlexer import PitchLexer
 from src.pitchtypes import MaybeType, ReferenceType, TypeBase, UnknownType, UnresolvedType
 from src.scope import Scope
@@ -60,7 +61,7 @@ class PitchParser(object):
         '''
         struct : STRUCT ID LBRACE struct_members RBRACE
         '''
-        print("struct", t[4])
+        printlog("struct", t[4])
         t[0] = nodes.Struct(id=t[2], members=t[4])
 
     def p_block(self, t):
@@ -149,15 +150,21 @@ class PitchParser(object):
 
     def p_reassignment(self, t):
         '''
-        statement : ID EQUALS expression SEMI
+        statement : expression EQUALS expression SEMI
         '''
-        t[0] = nodes.Assignment(type="int", id=t[1], expression=t[3])
+        t[0] = nodes.Reassignment(lexpr=t[1], rexpr=t[3])
 
     def p_if(self, t):
         '''
         statement : IF LPAREN expression RPAREN block
         '''
         t[0] = nodes.If(t[3], t[5])
+
+    def p_call_statement(self, t):
+        '''
+        statement : expression SEMI
+        '''
+        t[0] = nodes.ExpressionStatement(t[1])
 
     def p_call(self, t):
         '''
@@ -186,8 +193,8 @@ class PitchParser(object):
         t[0] = nodes.CompCall(id=t[2], arguments=t[4])
 
     def p_error(self, t):
-        print(f"Syntax error")
-        print(t.type, t.value, t.lineno, t.lexpos)
+        printlog(f"Syntax error")
+        printlog(t.type, t.value, t.lineno, t.lexpos)
 
     def p_string(self, t):
         '''
@@ -212,7 +219,7 @@ class PitchParser(object):
 
     def p_parameter(self, t):
         '''
-        parameter : ID COLON ID
+        parameter : ID COLON type
         '''
         t[0] = nodes.Parameter(id=t[1], type=t[3])
 
@@ -242,11 +249,11 @@ class PitchParser(object):
         '''
         expression : REF ID
         '''
-        t[0] = nodes.Reference(t[1], t[3])
+        t[0] = nodes.Reference(nodes.Identifier(t[2]))
 
     def p_type_ref(self, t):
         '''
-        type : REF ID
+        type : REF type
         '''
         t[0] = ReferenceType(t[2])
 
@@ -270,7 +277,7 @@ class PitchParser(object):
         if len(t) == 2:
             t[0] = [t[1]]
         else:
-            print(t[0], t[1], t[3])
+            printlog(t[0], t[1], t[3])
             t[0] = t[1] + [t[3]]
 
     def p_struct_init(self, t):

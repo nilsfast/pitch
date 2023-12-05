@@ -107,7 +107,7 @@ class PitchLexer(object):
 
     # Error handling rule
     def t_error(self, t):
-        print(f"Illegal character '{t.value[0]}'")
+        printlog(f"Illegal character '{t.value[0]}'")
         t.lexer.skip(1)
 
     def __init__(self, **kwargs):
@@ -120,4 +120,4 @@ class PitchLexer(object):
             tok = self.lexer.token()
             if not tok:
                 break
-            print(tok)
+            printlog(tok)
