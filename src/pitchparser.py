@@ -25,6 +25,7 @@ class PitchParser(object):
         top_level_statement : function
                             | statement
                             | struct
+                            | import_statement
         '''
         t[0] = t[1]
 
@@ -39,6 +40,12 @@ class PitchParser(object):
         else:
             t[0] = nodes.Function(id=t[2], params=t[4],
                                   return_type=t[6], block=t[7])
+
+    def p_import_statement(self, t):
+        '''
+        import_statement : IMPORT ID SEMI
+        '''
+        t[0] = nodes.ImportStatement(id=t[2])
 
     def p_struct_member(self, t):
         '''
@@ -254,6 +261,7 @@ class PitchParser(object):
     def p_type_ref(self, t):
         '''
         type : REF type
+            | AMPERSAND type
         '''
         t[0] = ReferenceType(t[2])
 
@@ -284,7 +292,7 @@ class PitchParser(object):
         '''
         expression : ID LBRACE struct_init_members RBRACE
         '''
-        t[0] = nodes.StructInit(id=t[1], members=t[3])
+        t[0] = nodes.StructInit(id=t[1], members=t[3], alloc=False)
 
     start = 'program'
 

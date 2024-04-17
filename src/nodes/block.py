@@ -123,7 +123,7 @@ class Function(Base):
     def __repr__(self):
         return f'Function(id={repr(self.id)}, ret={repr(self.return_type)}, params={repr(self.params)}, block={repr(self.block)})'
 
-    def populate_scope(self, scope):
+    def populate_scope(self, scope, _: Block):
         printlog("populating scope for function",
                  self.id, self.return_type)
         self.block.parent_function = self
@@ -219,13 +219,16 @@ class StructMember(Base):
         self.type: TypeBase = type
         self.id = id
 
-    def compute_type(self, scope: Scope):
+    def compute_type(self, scope: Scope, stuct_id: str):
+        printlog("computing type", self.type)
         if isinstance(self.type, UnresolvedType):
             type = scope.find(self.type.name)
             if not type:
                 throw_compiler_error(
                     f'Could not resolve type {self.type.id}')
             self.type = type.type
+        if isinstance(self.type, ReferenceType):
+            self.type.to = resolve_with_scope(self.type.to, scope)
 
         return self.type
 
@@ -241,13 +244,13 @@ class Struct(Base):
     def __repr__(self):
         return f'Struct({self.id}, {self.member_list})'
 
-    def populate_scope(self, scope: Scope):
+    def populate_scope(self, scope: Scope, _: Block):
 
         printlog("POPULATE SCOPE STRUCT")
         printlog(self.member_list)
         member_types = {}
         for member in self.member_list:
-            member_types[member.id] = member.compute_type(scope)
+            member_types[member.id] = member.compute_type(scope, self.id)
         struct_type = StructType(self.id, member_types)
         scope.add(self.id, struct_type)
         printlog("struct type", struct_type)

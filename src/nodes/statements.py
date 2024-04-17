@@ -2,7 +2,8 @@ from abc import abstractmethod
 from src.context import ContextVar
 from src.error import throw_compiler_error
 from src.nodes.expressions import Expression, ExpressionBase
-from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TypeBase, UnknownType, UnresolvedType,  resolve_with_scope
+from src.pitch_std import LibFunction
+from src.pitchtypes import FunctionType, IntType, LocalStringType, ReferenceType, TType, TypeBase, UnknownType, UnresolvedType,  resolve_with_scope
 from src.scope import Scope
 import src.cgen as cgen
 from src.nodes.utils import printlog, Base
@@ -20,6 +21,33 @@ class StatementBase(Base):
     @abstractmethod
     def generate_c(self, writer: cgen.CWriter, context) -> str:
         pass
+
+
+class ImportStatement(StatementBase):
+    def __init__(self, id: str):
+        self.id = id
+
+    def __repr__(self):
+        return f'Import({self.id})'
+
+    def populate_scope(self, scope: Scope, block):
+        printlog("Importing", self.id)
+        scope.add(self.id, UnknownType())
+
+    def to_c(self):
+        return f'#include "{self.id}.h"'
+
+    def check_references(self, context):
+        printlog("checking referencess...")
+
+    def generate_c(self, writer: cgen.CWriter, context):
+        writer.add_import(f"p_{self.id}.h", local=True)
+
+    def resolve_imports(self, scope, libs: list[LibFunction]):
+        for lib in libs:
+            if lib.name == self.id:
+                scope.add(self.id, lib.t)
+                return
 
 
 class ExpressionStatement(StatementBase):
@@ -66,6 +94,7 @@ class StatementList(Base):
 
     def populate_scope(self, scope, block):
         for statement in self.statements:
+            printlog("populating scope for", scope, block)
             statement.populate_scope(scope, block)
 
     def to_c(self, level=0):
@@ -123,7 +152,7 @@ class Assignment(StatementBase):
             self.t = expression_type
         elif not self.t.equal_to(expression_type):
             throw_compiler_error(
-                f'Identifier "{self.id}" type does not match expression type')
+                f'Identifier "{self.id}" type does not match expression type. Expected {self.t}, got {expression_type}')
         else:
             printlog("type matches", self.t, expression_type)
             self.t = expression_type
@@ -268,19 +297,26 @@ class Call(ExpressionBase):
         printlog("Computing call type")
         arg_types = []
         if self.args:
-            for arg in self.args.expressions:
+            for i, arg in enumerate(self.args.expressions):
+                print("arg types during function call", arg.compute_type(scope))
                 arg_type = arg.compute_type(scope)
                 arg_types.append(arg_type)
+                scope_entry = scope.find(self.id)
+                if scope_entry and isinstance(scope_entry.type, FunctionType):
+                    if (scope_entry.type.params[i], TType):
+                        throw_compiler_error(
+                            f'Cannot call function with type T as argument')
+
         printlog("Call with arg types", arg_types)
         # Return type
         # Look for own type signature in scope
 
-        if self.id == "alloc":
-            type_name = self.args.expressions[0].id
-            type_obj = resolve_with_scope(UnresolvedType(type_name), scope)
-            self.t = ReferenceType(type_obj, scope="heap")
-            printlog("Alloc type", self.t)
-            return self.t
+        # if self.id == "alloc":
+        #    type_name = self.args.expressions[0].id
+        #    type_obj = resolve_with_scope(UnresolvedType(type_name), scope)
+        #    self.t = ReferenceType(type_obj, scope="heap")
+        #    printlog("Alloc type", self.t)
+        #    return self.t
 
         if not scope.find(self.id):
             throw_compiler_error(
@@ -292,8 +328,8 @@ class Call(ExpressionBase):
         return self.t.return_type
 
     def generate_c(self, writer, context):
-        if self.id == "alloc":
-            return f'malloc((size_t) {self.args.expressions[1].generate_c(writer, context)} * sizeof({self.t.to.to_c()}))'
+        # if self.id == "alloc":
+        #    return f'malloc((size_t) {self.args.expressions[1].generate_c(writer, context)} * sizeof({self.t.to.to_c()}))'
         if self.args:
             printlog("function has args, passing those")
             return f'{self.id}({self.args.generate_c(writer, context)})'

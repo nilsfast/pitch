@@ -67,8 +67,8 @@ class CWriter():
         self.top_level_writer.append_unique(data)
         return self
 
-    def add_import(self, lib: str):
-        self.imports.append(lib)
+    def add_import(self, lib: str, local=False):
+        self.imports.append((lib, local))
         return self
 
     def append_statement(self, data):
@@ -88,8 +88,11 @@ class CWriter():
     def export(self):
         statements = []
         if not self.top_level_writer:
-            for lib_import in self.imports:
-                statements.append(CStatement(f"#include <{lib_import}>"))
+            for lib, local in self.imports:
+                if local:
+                    statements.append(CStatement(f'#include "{lib}"'))
+                else:
+                    statements.append(CStatement(f'#include <{lib}>'))
         statements.extend(self.statements)
 
         return statements

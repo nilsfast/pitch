@@ -47,6 +47,17 @@ class PitchLexer(object):
         'null': 'NULL',
         'ref': 'REF',
         'mut': 'MUT',
+        'impl': 'IMPL',
+        'in': 'IN',
+        'as': 'AS',
+        'match': 'MATCH',
+        'case': 'CASE',
+        'default': 'DEFAULT',
+        'break': 'BREAK',
+        'continue': 'CONTINUE',
+        'while': 'WHILE',
+        'do': 'DO',
+        'import': 'IMPORT',
 
     }
 

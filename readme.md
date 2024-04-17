@@ -1,5 +1,7 @@
 # pitch
 
+_unstable_
+
 Pitch is a low-level programming language with high-ish-level abstractions that compiles to C.
 
 **Goals**
@@ -77,17 +79,6 @@ fn main() {
     node.next = &node2;
 }
 ```
-
-The nodes are automatically allocated on the heap and freed when the function ends. Lets create a function that inserts a new node:
-
-```
-fn insert(node: &Node, value: i32) {
-    let new_node = Node<..>{value: value, next: null};
-    node.next = &new_node;
-}
-```
-
-The `<..>` annotation tells the compiler that the node is allocated on the heap and that it's lifetime is tied to the lifetime of the parent function.
 
 If we want to control the memory more precisely, we can use named arenas:
 

@@ -1,6 +1,7 @@
 
 from src import cgen
 from src.context import Context
+from src.nodes.statements import ImportStatement
 from src.nodes.utils import Base
 from src.nodes.block import Function
 from src.nodes.preprocessor import PreprocessorBase
@@ -30,11 +31,16 @@ class Program(Base):
             elif isinstance(statement, Function):
                 self.functions.append(statement)
 
-    def populate_scope(self):
+    def populate_scope(self, libs):
         assert (len(self.functions) > 0)
         self.scope = Scope("__program__")
+        for statement in self.statements:
+            if isinstance(statement, ImportStatement):
+                print("resolving imports")
+                statement.resolve_imports(self.scope, libs)
+
         for stm in self.statements:
-            stm.populate_scope(self.scope)
+            stm.populate_scope(self.scope, None)
 
     def generate_c(self):
         top_level = cgen.CProgram()
