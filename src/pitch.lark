@@ -1,0 +1,58 @@
+%import common.WS
+%import common.CNAME
+%import common.NUMBER
+%import common.ESCAPED_STRING
+STRING: ESCAPED_STRING
+LITERAL: NUMBER 
+
+IDENTIFIER: CNAME
+identifier: CNAME
+
+!base_type: CNAME
+
+
+NULLABLE: "?"
+!type_expr: CNAME -> base_type
+    | type_expr NULLABLE -> nullable_type
+    | CNAME "(" type_expr ")" -> type_template
+ 
+func_decl: "fn" CNAME "(" param_list ")" "->" type_expr block
+
+param_list: (param ("," param)*)?
+
+param: IDENTIFIER ":" type_expr
+
+!return_stmt: "return" expr ";"
+var_decl: "let" identifier [":" type_expr] "=" expr ";"
+
+assignment: identifier "=" expr ";"
+
+call_args: expr ("," expr)*
+call: identifier "(" call_args? ")"
+
+
+!expr: literal
+    | identifier
+    | expr "+" expr   -> add
+    | expr "-" expr   -> subtract
+    | expr "*" expr   -> multiply
+    | expr "/" expr   -> divide
+    | expr "%" expr   -> modulo
+    | "-" expr        -> negate
+    | "(" expr ")"    -> group
+    | call 
+    | string_literal 
+    | "!" expr         -> not
+    | "&" expr         -> reference
+    | "*" expr         -> dereference
+
+literal: LITERAL
+string_literal: STRING
+
+?statement: return_stmt | var_decl | assignment | expr ";" 
+
+block: "{" statement* "}"
+
+program: func_decl+
+
+%ignore WS
