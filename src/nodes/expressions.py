@@ -231,10 +231,9 @@ class StructInitMember(ExpressionBase):
 
 
 class StructInit(ExpressionBase):
-    def __init__(self, id: str, members: list, alloc: bool = False):
+    def __init__(self, id: str, members: list):
         self.id = id
         self.members = members
-        self.alloc = alloc
         self.t: TypeBase = None
 
     def __repr__(self):
@@ -248,13 +247,7 @@ class StructInit(ExpressionBase):
         struct_init_type = scope.find(self.id)
         if not struct_init_type:
             throw_compiler_error(f'Identifier "{self.id}" not found')
-
-        if self.alloc:
-            self.t = ReferenceType(
-                struct_init_type.type, scope="global")
-        else:
-            self.t = struct_init_type.type
-
+        self.t = struct_init_type.type
         return self.t
 
     def generate_c(self, writer: cgen.CWriter, context: Context, role=None) -> str:
@@ -262,14 +255,6 @@ class StructInit(ExpressionBase):
         for member in self.members:
             struct_member_c.append(
                 f'.{member.id}={member.value.generate_c(writer, context, role="struct.init")}')
-        # if self.alloc:
-        #    tmp = context.register_symbol("tmp")
-        #    writer.append(cgen.CStatement(f'{self.t.to_c()} {tmp} = ({
-        #                  self.t.to.to_c()}*)malloc(sizeof({self.t.to.to_c()}));'))
-        #    writer.append(cgen.CStatement(
-        #        f'*{tmp} = ({self.t.to.to_c()}) {{ {", ".join(struct_member_c)} }};'))
-        #    return tmp
-        # else:
         return f"(struct {self.id}){{ {", ".join(struct_member_c)} }}"
 
     def evaluates_to(self):

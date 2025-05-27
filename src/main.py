@@ -2,7 +2,6 @@
 import os
 from src.error import print_success, throw_compiler_error
 from src.nodes.utils import printlog
-import src.pitch_std as std
 from src.pitchparser import PitchParser
 from src.nodes.program import Program
 from prettyprinter import pprint
@@ -37,7 +36,6 @@ class PitchCompiler():
             throw_compiler_error("No parse tree generated")
         else:
             print_success("Parse tree generated")
-            print(parse_tree)
 
         definitions = {}
 
@@ -45,17 +43,15 @@ class PitchCompiler():
 
         printlog("Defs", definitions)
 
-        libs = [std.Alloc()]
-
-        parse_tree.populate_scope(libs)
+        parse_tree.populate_scope()
 
         # parse_tree.typecheck()
         # parse_tree.expand()
         # parse_tree.validate_branches()
         context = Context()
         parse_tree.check_references(context)
-        print("PT", parse_tree)
-        print(parse_tree)
+
+        printlog(parse_tree)
         printlog("")
         c_tree = parse_tree.generate_c()
         if not c_tree:
